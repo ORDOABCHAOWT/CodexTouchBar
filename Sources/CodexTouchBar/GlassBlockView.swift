@@ -226,10 +226,10 @@ final class DashboardStripView: NSView {
         statusStack.distribution = .fillEqually
         statusStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         statusStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        // Give the item a wide natural size so the system can use the full
-        // Touch Bar instead of centering a short strip with black margins.
-        // This is a low-priority preference: on narrower Touch Bars AppKit
-        // reduces every status block proportionally.
+        // Use the native 13-inch Touch Bar width as a preferred size. The
+        // constraint is intentionally high-but-breakable: on a narrower bar
+        // AppKit must shrink the equal-fill status blocks instead of clipping
+        // the rightmost one.
         let preferredStatusWidth = statusStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 520)
         preferredStatusWidth.priority = .defaultHigh
 
@@ -237,8 +237,8 @@ final class DashboardStripView: NSView {
         rootStack.addArrangedSubview(statusStack)
         addSubview(rootStack)
 
-        let preferredStripWidth = widthAnchor.constraint(greaterThanOrEqualToConstant: 1200)
-        preferredStripWidth.priority = .defaultLow
+        let preferredStripWidth = widthAnchor.constraint(equalToConstant: 1060)
+        preferredStripWidth.priority = .defaultHigh
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
             rootStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
@@ -255,10 +255,10 @@ final class DashboardStripView: NSView {
     required init?(coder: NSCoder) { nil }
 
     override var intrinsicContentSize: NSSize {
-        // NSTouchBar sizes custom items from their intrinsic content size. A
-        // generous preferred width lets the strip reach both physical edges;
-        // AppKit still compresses it when a smaller Touch Bar is available.
-        NSSize(width: 1200, height: 30)
+        // NSTouchBar sizes custom items from their intrinsic content size.
+        // 1060 points closely matches the usable width of the 13-inch Touch
+        // Bar while still allowing AppKit to compress on smaller hardware.
+        NSSize(width: 1060, height: 30)
     }
 
     func update(snapshot: DashboardSnapshot) {
