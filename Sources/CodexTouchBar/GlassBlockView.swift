@@ -226,6 +226,10 @@ final class DashboardStripView: NSView {
         statusStack.distribution = .fillEqually
         statusStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         statusStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // Give the item a wide natural size so the system can use the full
+        // Touch Bar instead of centering a short strip with black margins.
+        // This is a low-priority preference: on narrower Touch Bars AppKit
+        // reduces every status block proportionally.
         let preferredStatusWidth = statusStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 520)
         preferredStatusWidth.priority = .defaultHigh
 
@@ -233,7 +237,7 @@ final class DashboardStripView: NSView {
         rootStack.addArrangedSubview(statusStack)
         addSubview(rootStack)
 
-        let preferredStripWidth = widthAnchor.constraint(greaterThanOrEqualToConstant: 950)
+        let preferredStripWidth = widthAnchor.constraint(greaterThanOrEqualToConstant: 1200)
         preferredStripWidth.priority = .defaultLow
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
@@ -249,6 +253,13 @@ final class DashboardStripView: NSView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    override var intrinsicContentSize: NSSize {
+        // NSTouchBar sizes custom items from their intrinsic content size. A
+        // generous preferred width lets the strip reach both physical edges;
+        // AppKit still compresses it when a smaller Touch Bar is available.
+        NSSize(width: 1200, height: 30)
+    }
 
     func update(snapshot: DashboardSnapshot) {
         self.snapshot = snapshot
@@ -279,7 +290,7 @@ final class DashboardStripView: NSView {
             ))
         }
 
-        let visibleTasks = Array(snapshot.tasks.prefix(3))
+        let visibleTasks = Array(snapshot.tasks.prefix(6))
         let layoutKey = visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID)
         if statusLayoutKey != layoutKey {
             statusStack.arrangedSubviews.forEach { view in
@@ -306,7 +317,14 @@ final class DashboardStripView: NSView {
             statusLayoutKey = layoutKey
         }
 
-        let titleLimit = visibleTasks.count >= 3 ? 4 : 7
+        let titleLimit: Int
+        switch visibleTasks.count {
+        case 0...2: titleLimit = 12
+        case 3: titleLimit = 10
+        case 4: titleLimit = 8
+        case 5: titleLimit = 7
+        default: titleLimit = 6
+        }
         for (task, block) in zip(visibleTasks, taskBlocks) {
             let elapsed = Self.elapsedString(since: task.startedAt)
             let compactTitle = String(task.title.prefix(titleLimit))

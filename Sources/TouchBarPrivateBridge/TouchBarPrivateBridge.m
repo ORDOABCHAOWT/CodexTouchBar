@@ -187,7 +187,9 @@ NSArray<NSDictionary<NSString *, id> *> *CTBReadRecentCodexActivity(NSTimeInterv
         "'codex_core::session::world_state','codex_core::tools::parallel','codex_goal_extension::runtime') "
         "GROUP BY thread_id ORDER BY MAX(ts) DESC LIMIT 12";
     const char *threadSQL =
-        "SELECT COALESCE(NULLIF(name,''), NULLIF(preview,''), NULLIF(title,''), ''), cwd, source "
+        // Prefer Codex's thread title (the project/task label) over the long
+        // preview transcript; previews often begin with attachment metadata.
+        "SELECT COALESCE(NULLIF(name,''), NULLIF(title,''), NULLIF(preview,''), ''), cwd, source "
         "FROM threads WHERE id = ? LIMIT 1";
     sqlite3_stmt *activityStatement = NULL;
     sqlite3_stmt *threadStatement = NULL;

@@ -88,7 +88,9 @@ final class StatusStore {
                 if lhsTerminal != rhsTerminal { return !lhsTerminal }
                 return lhs.updatedAt > rhs.updatedAt
             }
-            .prefix(3)
+            // Keep enough blocks for a few concurrent Codex projects. The
+            // Touch Bar's equal-fill stack compresses them as this grows.
+            .prefix(6)
             .map { $0 }
     }
 }

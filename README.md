@@ -4,12 +4,12 @@ A lightweight native macOS companion that shows active Codex tasks and ChatGPT C
 
 ## First-version scope
 
-- Up to three active Codex desktop or CLI tasks, detected from local status metadata and showing phase plus elapsed time.
+- Up to six active Codex desktop or CLI tasks, detected from local status metadata and showing the Codex thread/project title plus phase and elapsed time. Blocks expand into unused Touch Bar space and compress equally as more tasks appear.
 - Tap any task block to open its exact `codex://threads/<id>` page in the Codex desktop app.
 - Five-hour and weekly remaining quota, including reset time, from the official local Codex App Server protocol.
 - A Monterey-style glass treatment: flat translucent color, a fine luminous border, and rounded corners—without gradients.
 - Actual previous, play/pause, and next-track controls grouped together on the left, without Accessibility or Input Monitoring permission.
-- Native AppKit button hit-testing and press feedback for every interactive control; status blocks fill the available center region proportionally.
+- Native AppKit button hit-testing and press feedback for every interactive control; the first physical touch sends the action and status blocks fill the available Touch Bar region proportionally.
 - The private modal bar is shown only while `com.openai.codex` is frontmost and is dismissed when another app becomes active, restoring the system Touch Bar.
 - A built-in on-screen preview that uses the exact same views as the physical Touch Bar.
 - No prompt or transcript collection. No third-party runtime dependencies.
