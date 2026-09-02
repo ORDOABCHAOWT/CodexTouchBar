@@ -175,7 +175,10 @@ final class CodexAppServerClient {
         var titles: [String: String] = [:]
         for thread in data {
             guard let id = thread["id"] as? String else { continue }
-            let rawTitle = ["name", "title", "preview", "firstUserMessage"]
+            // Only use Codex's explicit thread/project title. Message previews
+            // and first-user-message fields are request body content, so they
+            // must never become Touch Bar text.
+            let rawTitle = ["name", "title"]
                 .compactMap { thread[$0] as? String }
                 .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             guard let rawTitle else { continue }
