@@ -21,6 +21,7 @@ let package = Package(
             publicHeadersPath: "include",
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedLibrary("sqlite3"),
             ]
         ),
         .executableTarget(

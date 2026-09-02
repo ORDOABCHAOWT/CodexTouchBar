@@ -8,7 +8,7 @@ final class PreviewWindowController: NSWindowController {
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 780, height: 132),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 124),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -89,9 +89,9 @@ final class PreviewWindowController: NSWindowController {
             touchBarBackdrop.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
             touchBarBackdrop.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
             touchBarBackdrop.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
-            touchBarBackdrop.heightAnchor.constraint(equalToConstant: 52),
+            touchBarBackdrop.heightAnchor.constraint(equalToConstant: 40),
             dashboardView.leadingAnchor.constraint(equalTo: touchBarBackdrop.leadingAnchor, constant: 6),
-            dashboardView.trailingAnchor.constraint(lessThanOrEqualTo: touchBarBackdrop.trailingAnchor, constant: -6),
+            dashboardView.trailingAnchor.constraint(equalTo: touchBarBackdrop.trailingAnchor, constant: -6),
             dashboardView.centerYAnchor.constraint(equalTo: touchBarBackdrop.centerYAnchor),
             statusLabel.leadingAnchor.constraint(equalTo: touchBarBackdrop.leadingAnchor, constant: 2),
             statusLabel.topAnchor.constraint(equalTo: touchBarBackdrop.bottomAnchor, constant: 12),

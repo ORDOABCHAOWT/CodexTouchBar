@@ -1,6 +1,20 @@
 import AppKit
 import CodexTouchBarCore
 import Foundation
+import TouchBarPrivateBridge
+
+if CommandLine.arguments.contains("--media-capability-check") {
+    print(CTBMediaRemoteAvailable() ? "available" : "unavailable")
+    exit(CTBMediaRemoteAvailable() ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
+if CommandLine.arguments.contains("--activity-probe") {
+    let rows = CTBReadRecentCodexActivity(75)
+    for row in rows.prefix(3) {
+        if let id = row["id"] as? String { print(id) }
+    }
+    exit(rows.isEmpty ? EXIT_FAILURE : EXIT_SUCCESS)
+}
 
 if CommandLine.arguments.contains("--hook") {
     let data = FileHandle.standardInput.readDataToEndOfFile()

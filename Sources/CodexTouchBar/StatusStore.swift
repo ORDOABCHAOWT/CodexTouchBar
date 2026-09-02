@@ -8,7 +8,8 @@ final class StatusStore {
     private(set) var snapshot = DashboardSnapshot() {
         didSet { onChange?(snapshot) }
     }
-    private var tasksByID: [String: TaskSnapshot] = [:]
+    private var hookTasksByID: [String: TaskSnapshot] = [:]
+    private var detectedTasksByID: [String: TaskSnapshot] = [:]
     private var titlesByID: [String: String] = [:]
     private var cleanupTimer: Timer?
 
@@ -20,19 +21,19 @@ final class StatusStore {
 
     func accept(_ packet: HookPacket) {
         if packet.eventName == "SessionEnd" {
-            tasksByID.removeValue(forKey: packet.sessionID)
+            hookTasksByID.removeValue(forKey: packet.sessionID)
             publish()
             return
         }
         guard let phase = packet.phase else { return }
 
-        if phase == .idle, tasksByID[packet.sessionID] == nil {
+        if phase == .idle, hookTasksByID[packet.sessionID] == nil {
             return
         }
 
-        let prior = tasksByID[packet.sessionID]
+        let prior = hookTasksByID[packet.sessionID]
         let title = titlesByID[packet.sessionID] ?? prior?.title ?? packet.workspaceName
-        tasksByID[packet.sessionID] = TaskSnapshot(
+        hookTasksByID[packet.sessionID] = TaskSnapshot(
             sessionID: packet.sessionID,
             title: title,
             workspaceName: packet.workspaceName,
@@ -44,10 +45,15 @@ final class StatusStore {
         publish()
     }
 
+    func updateDetectedTasks(_ tasks: [TaskSnapshot]) {
+        detectedTasksByID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.sessionID, $0) })
+        publish()
+    }
+
     func updateThreadTitles(_ titles: [String: String]) {
         titlesByID.merge(titles) { _, new in new }
-        for (id, title) in titles where tasksByID[id] != nil {
-            tasksByID[id]?.title = title
+        for (id, title) in titles where hookTasksByID[id] != nil {
+            hookTasksByID[id]?.title = title
         }
         publish()
     }
@@ -63,7 +69,7 @@ final class StatusStore {
 
     private func removeExpiredTasks() {
         let now = Date()
-        tasksByID = tasksByID.filter { _, task in
+        hookTasksByID = hookTasksByID.filter { _, task in
             if task.phase == .completed || task.phase == .failed {
                 return now.timeIntervalSince(task.updatedAt) < 12
             }
@@ -73,7 +79,9 @@ final class StatusStore {
     }
 
     private func publish() {
-        snapshot.tasks = tasksByID.values
+        var merged = detectedTasksByID
+        for (id, task) in hookTasksByID { merged[id] = task }
+        snapshot.tasks = merged.values
             .sorted { lhs, rhs in
                 let lhsTerminal = lhs.phase == .completed || lhs.phase == .failed
                 let rhsTerminal = rhs.phase == .completed || rhs.phase == .failed

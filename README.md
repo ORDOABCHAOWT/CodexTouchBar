@@ -4,11 +4,12 @@ A lightweight native macOS companion that shows active Codex tasks and ChatGPT C
 
 ## First-version scope
 
-- Up to three active Codex sessions, showing workspace name, current phase, and elapsed time.
+- Up to three active Codex desktop or CLI tasks, detected from local status metadata and showing phase plus elapsed time.
 - Tap any task block to open its exact `codex://threads/<id>` page in the Codex desktop app.
 - Five-hour and weekly remaining quota, including reset time, from the official local Codex App Server protocol.
 - A Monterey-style glass treatment: flat translucent color, a fine luminous border, and rounded corners—without gradients.
-- Reserved space at both ends so native playback and system controls are not visually crowded.
+- Actual previous, play/pause, and next-track controls in the side positions, without Accessibility or Input Monitoring permission.
+- Compact single-line 24-point blocks sized to avoid clipping on the physical Touch Bar.
 - A built-in on-screen preview that uses the exact same views as the physical Touch Bar.
 - No prompt or transcript collection. No third-party runtime dependencies.
 
@@ -40,7 +41,7 @@ The hook helper accepts only:
 - canonical tool name
 - event time
 
-It ignores transcript paths, absolute working directories, prompts, responses, tool inputs, tool outputs, models, and permission mode. Status is transferred through a user-only Unix socket and kept in memory.
+It ignores transcript paths, absolute working directories, prompts, responses, tool inputs, tool outputs, models, and permission mode. Status is transferred through a user-only Unix socket and kept in memory. The desktop-task fallback reads only task IDs and timestamps from Codex's local log index, then resolves an in-memory display title from the local thread index; it never reads log bodies or writes task data to disk.
 
 ## Third-party acknowledgement
 

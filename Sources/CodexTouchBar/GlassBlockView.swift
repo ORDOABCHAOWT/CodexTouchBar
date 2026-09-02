@@ -37,12 +37,11 @@ final class GlassBlockView: NSVisualEffectView {
             setAccessibilityRole(onTap == nil ? .group : .button)
         }
     }
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let valueLabel = NSTextField(labelWithString: "")
+
+    private let textLabel = NSTextField(labelWithString: "")
     private let dotView = NSView()
     private let tintLayer = CALayer()
     private let borderLayer = CAShapeLayer()
-    private var accent: GlassAccent = .blue
 
     init(width: CGFloat) {
         super.init(frame: .zero)
@@ -51,79 +50,113 @@ final class GlassBlockView: NSVisualEffectView {
         material = .hudWindow
         blendingMode = .withinWindow
         state = .active
-        layer?.cornerRadius = 8
+        layer?.cornerRadius = 7
         layer?.masksToBounds = true
-
         layer?.addSublayer(tintLayer)
 
         borderLayer.fillColor = NSColor.clear.cgColor
-        borderLayer.strokeColor = NSColor.white.withAlphaComponent(0.42).cgColor
+        borderLayer.strokeColor = NSColor.white.withAlphaComponent(0.46).cgColor
         borderLayer.lineWidth = 0.8
         layer?.addSublayer(borderLayer)
 
         dotView.translatesAutoresizingMaskIntoConstraints = false
         dotView.wantsLayer = true
-        dotView.layer?.cornerRadius = 3
-        dotView.layer?.shadowRadius = 3
-        dotView.layer?.shadowOpacity = 0.7
-        dotView.layer?.shadowOffset = .zero
+        dotView.layer?.cornerRadius = 2.5
 
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = .systemFont(ofSize: 9, weight: .semibold)
-        titleLabel.textColor = NSColor.white.withAlphaComponent(0.78)
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.maximumNumberOfLines = 1
-
-        valueLabel.translatesAutoresizingMaskIntoConstraints = false
-        valueLabel.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold)
-        valueLabel.textColor = .white
-        valueLabel.lineBreakMode = .byTruncatingTail
-        valueLabel.maximumNumberOfLines = 1
+        textLabel.translatesAutoresizingMaskIntoConstraints = false
+        textLabel.font = .systemFont(ofSize: 10.5, weight: .semibold)
+        textLabel.textColor = .white
+        textLabel.lineBreakMode = .byTruncatingTail
+        textLabel.maximumNumberOfLines = 1
+        textLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         addSubview(dotView)
-        addSubview(titleLabel)
-        addSubview(valueLabel)
-        let click = NSClickGestureRecognizer(target: self, action: #selector(handleTap))
-        addGestureRecognizer(click)
+        addSubview(textLabel)
+        addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(handleTap)))
 
+        let preferredWidth = widthAnchor.constraint(equalToConstant: width)
+        preferredWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: width),
-            heightAnchor.constraint(equalToConstant: 30),
-            dotView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            preferredWidth,
+            heightAnchor.constraint(equalToConstant: 24),
+            dotView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 7),
             dotView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            dotView.widthAnchor.constraint(equalToConstant: 6),
-            dotView.heightAnchor.constraint(equalToConstant: 6),
-            titleLabel.leadingAnchor.constraint(equalTo: dotView.trailingAnchor, constant: 6),
-            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7),
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 3),
-            valueLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            valueLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
-            valueLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            dotView.widthAnchor.constraint(equalToConstant: 5),
+            dotView.heightAnchor.constraint(equalToConstant: 5),
+            textLabel.leadingAnchor.constraint(equalTo: dotView.trailingAnchor, constant: 5),
+            textLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            textLabel.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -0.25),
         ])
-        set(title: "Codex", value: "正在连接", accent: .blue)
+        set(text: "Codex · 连接中", accent: .blue)
     }
 
     required init?(coder: NSCoder) { nil }
 
-    @objc private func handleTap() {
-        onTap?()
-    }
+    @objc private func handleTap() { onTap?() }
 
-    func set(title: String, value: String, accent: GlassAccent) {
-        titleLabel.stringValue = title
-        valueLabel.stringValue = value
-        self.accent = accent
+    func set(text: String, accent: GlassAccent) {
+        textLabel.stringValue = text
         let color = accent.color
-        tintLayer.backgroundColor = color.withAlphaComponent(0.30).cgColor
-        dotView.layer?.backgroundColor = color.withAlphaComponent(0.96).cgColor
-        dotView.layer?.shadowColor = color.cgColor
+        tintLayer.backgroundColor = color.withAlphaComponent(0.24).cgColor
+        dotView.layer?.backgroundColor = color.withAlphaComponent(0.98).cgColor
     }
 
     override func layout() {
         super.layout()
         tintLayer.frame = bounds
         borderLayer.frame = bounds
-        borderLayer.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 7.5, cornerHeight: 7.5, transform: nil)
+        borderLayer.path = CGPath(
+            roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+            cornerWidth: 6.5,
+            cornerHeight: 6.5,
+            transform: nil
+        )
+    }
+}
+
+final class MediaButtonView: NSButton {
+    private let tintLayer = CALayer()
+    private let borderLayer = CAShapeLayer()
+
+    init(symbolName: String, label: String, target: AnyObject?, action: Selector?) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        isBordered = false
+        imagePosition = .imageOnly
+        imageScaling = .scaleProportionallyDown
+        image = NSImage(systemSymbolName: symbolName, accessibilityDescription: label)
+        toolTip = label
+        self.target = target
+        self.action = action
+        setAccessibilityLabel(label)
+        layer?.cornerRadius = 7
+        layer?.masksToBounds = true
+        tintLayer.backgroundColor = NSColor.white.withAlphaComponent(0.11).cgColor
+        layer?.addSublayer(tintLayer)
+        borderLayer.fillColor = NSColor.clear.cgColor
+        borderLayer.strokeColor = NSColor.white.withAlphaComponent(0.38).cgColor
+        borderLayer.lineWidth = 0.8
+        layer?.addSublayer(borderLayer)
+        contentTintColor = NSColor.white.withAlphaComponent(0.94)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: 28),
+            heightAnchor.constraint(equalToConstant: 24),
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        tintLayer.frame = bounds
+        borderLayer.frame = bounds
+        borderLayer.path = CGPath(
+            roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+            cornerWidth: 6.5,
+            cornerHeight: 6.5,
+            transform: nil
+        )
     }
 }
 
@@ -140,14 +173,18 @@ final class DashboardStripView: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .horizontal
         stack.alignment = .centerY
-        stack.spacing = 6
+        stack.spacing = 4
         stack.distribution = .fill
         addSubview(stack)
+        let preferredStripWidth = widthAnchor.constraint(greaterThanOrEqualToConstant: 700)
+        preferredStripWidth.priority = .defaultLow
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: 38),
+            preferredStripWidth,
+            heightAnchor.constraint(equalToConstant: 30),
         ])
         tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.rebuild() }
     }
@@ -165,22 +202,23 @@ final class DashboardStripView: NSView {
             view.removeFromSuperview()
         }
 
-        stack.addArrangedSubview(Self.edgeSpacer(width: 34))
+        addMediaButton(symbol: "backward.fill", label: "上一首", action: #selector(previousTrack))
+        addMediaButton(symbol: "playpause.fill", label: "播放或暂停", action: #selector(togglePlayPause))
+        stack.addArrangedSubview(Self.flexibleSpacer())
 
         if snapshot.tasks.isEmpty {
-            let block = GlassBlockView(width: 126)
-            block.set(title: "Codex 任务", value: "等待新任务", accent: .gray)
+            let block = GlassBlockView(width: 118)
+            block.set(text: "Codex · 等待任务", accent: .gray)
             stack.addArrangedSubview(block)
         } else {
+            let width: CGFloat = snapshot.tasks.count >= 3 ? 98 : 120
             for task in snapshot.tasks.prefix(3) {
-                let block = GlassBlockView(width: snapshot.tasks.count >= 3 ? 116 : 136)
+                let block = GlassBlockView(width: width)
                 let elapsed = Self.elapsedString(since: task.startedAt)
-                let phase = task.phase == .usingTool && task.toolName != nil
-                    ? task.toolName!
-                    : task.phase.shortLabel
+                let titleLimit = snapshot.tasks.count >= 3 ? 3 : 7
+                let compactTitle = String(task.title.prefix(titleLimit))
                 block.set(
-                    title: task.title,
-                    value: "\(phase) · \(elapsed)",
+                    text: "\(compactTitle) · \(Self.phaseGlyph(task.phase)) \(elapsed)",
                     accent: .forPhase(task.phase)
                 )
                 block.onTap = { [weak self] in self?.onTaskSelected?(task.sessionID) }
@@ -191,28 +229,54 @@ final class DashboardStripView: NSView {
         let quotaByKind = Dictionary(uniqueKeysWithValues: snapshot.quotas.map { ($0.kind, $0) })
         addQuotaBlock(kind: .fiveHour, window: quotaByKind[.fiveHour], accent: .teal)
         addQuotaBlock(kind: .weekly, window: quotaByKind[.weekly], accent: .indigo)
-        stack.addArrangedSubview(Self.edgeSpacer(width: 34))
+        stack.addArrangedSubview(Self.flexibleSpacer())
+        addMediaButton(symbol: "forward.fill", label: "下一首", action: #selector(nextTrack))
     }
 
     private func addQuotaBlock(kind: QuotaKind, window: QuotaWindow?, accent: GlassAccent) {
-        let block = GlassBlockView(width: 84)
-        let value = window.map { "剩余 \($0.remainingPercent)%" } ?? "读取中…"
-        block.set(title: kind.label, value: value, accent: accent)
+        let block = GlassBlockView(width: 70)
+        let prefix = kind == .fiveHour ? "5h" : "周"
+        let value = window.map { "\(prefix) \($0.remainingPercent)%" } ?? "\(prefix) …"
+        block.set(text: value, accent: accent)
         stack.addArrangedSubview(block)
     }
 
-    private static func elapsedString(since start: Date) -> String {
-        let seconds = max(0, Int(Date().timeIntervalSince(start)))
-        if seconds < 60 { return "\(seconds)秒" }
-        if seconds < 3600 { return String(format: "%d:%02d", seconds / 60, seconds % 60) }
-        return String(format: "%d:%02d", seconds / 3600, (seconds % 3600) / 60)
+    private func addMediaButton(symbol: String, label: String, action: Selector) {
+        let button = MediaButtonView(symbolName: symbol, label: label, target: self, action: action)
+        button.isEnabled = MediaController.isAvailable
+        button.alphaValue = button.isEnabled ? 1 : 0.42
+        stack.addArrangedSubview(button)
     }
 
-    private static func edgeSpacer(width: CGFloat) -> NSView {
+    @objc private func previousTrack() { MediaController.send(.previousTrack) }
+    @objc private func togglePlayPause() { MediaController.send(.togglePlayPause) }
+    @objc private func nextTrack() { MediaController.send(.nextTrack) }
+
+    private static func elapsedString(since start: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(start)))
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3600 { return String(format: "%d:%02d", seconds / 60, seconds % 60) }
+        return String(format: "%dh%02d", seconds / 3600, (seconds % 3600) / 60)
+    }
+
+    private static func phaseGlyph(_ phase: TaskPhase) -> String {
+        switch phase {
+        case .thinking: return "思"
+        case .usingTool: return "工"
+        case .waitingApproval: return "批"
+        case .waitingInput: return "等"
+        case .completed: return "成"
+        case .failed: return "错"
+        case .idle: return "闲"
+        }
+    }
+
+    private static func flexibleSpacer() -> NSView {
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
-        spacer.widthAnchor.constraint(equalToConstant: width).isActive = true
-        spacer.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        spacer.widthAnchor.constraint(greaterThanOrEqualToConstant: 8).isActive = true
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return spacer
     }
 }
