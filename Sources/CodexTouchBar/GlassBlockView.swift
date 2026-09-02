@@ -199,6 +199,8 @@ final class DashboardStripView: NSView {
     private let rootStack = NSStackView()
     private let leftMediaStack = NSStackView()
     private let statusStack = NSStackView()
+    private let taskStack = NSStackView()
+    private let quotaStack = NSStackView()
     private var snapshot = DashboardSnapshot()
     private var tickTimer: Timer?
     private var statusLayoutKey: [String]?
@@ -223,9 +225,23 @@ final class DashboardStripView: NSView {
         statusStack.orientation = .horizontal
         statusStack.alignment = .centerY
         statusStack.spacing = 5
-        statusStack.distribution = .fillEqually
+        statusStack.distribution = .fill
         statusStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         statusStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        taskStack.orientation = .horizontal
+        taskStack.alignment = .centerY
+        taskStack.spacing = 5
+        taskStack.distribution = .fillEqually
+        taskStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        taskStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        quotaStack.orientation = .horizontal
+        quotaStack.alignment = .centerY
+        quotaStack.spacing = 5
+        quotaStack.distribution = .fill
+        quotaStack.setContentHuggingPriority(.required, for: .horizontal)
+        quotaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: 181)
+        preferredQuotaWidth.priority = .defaultHigh
         // Use the native 13-inch Touch Bar width as a preferred size. The
         // constraint is intentionally high-but-breakable: on a narrower bar
         // AppKit must shrink the equal-fill status blocks instead of clipping
@@ -235,10 +251,12 @@ final class DashboardStripView: NSView {
 
         rootStack.addArrangedSubview(leftMediaStack)
         rootStack.addArrangedSubview(statusStack)
+        statusStack.addArrangedSubview(taskStack)
+        statusStack.addArrangedSubview(quotaStack)
         addSubview(rootStack)
 
-        let preferredStripWidth = widthAnchor.constraint(equalToConstant: 1060)
-        preferredStripWidth.priority = .defaultHigh
+        let preferredStripWidth = widthAnchor.constraint(equalToConstant: 1000)
+        preferredStripWidth.priority = .defaultLow
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
             rootStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
@@ -247,6 +265,7 @@ final class DashboardStripView: NSView {
             mediaGroupWidth,
             preferredStripWidth,
             preferredStatusWidth,
+            preferredQuotaWidth,
             heightAnchor.constraint(equalToConstant: 30),
         ])
         tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.rebuild() }
@@ -256,9 +275,9 @@ final class DashboardStripView: NSView {
 
     override var intrinsicContentSize: NSSize {
         // NSTouchBar sizes custom items from their intrinsic content size.
-        // 1060 points closely matches the usable width of the 13-inch Touch
-        // Bar while still allowing AppKit to compress on smaller hardware.
-        NSSize(width: 1060, height: 30)
+        // 1000 points fits the usable width of the 13-inch Touch Bar while
+        // leaving AppKit enough room to compress task tabs on smaller bars.
+        NSSize(width: 1000, height: 30)
     }
 
     func update(snapshot: DashboardSnapshot) {
@@ -293,9 +312,11 @@ final class DashboardStripView: NSView {
         let visibleTasks = Array(snapshot.tasks.prefix(6))
         let layoutKey = visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID)
         if statusLayoutKey != layoutKey {
-            statusStack.arrangedSubviews.forEach { view in
-                statusStack.removeArrangedSubview(view)
-                view.removeFromSuperview()
+            [taskStack, quotaStack].forEach { stack in
+                stack.arrangedSubviews.forEach { view in
+                    stack.removeArrangedSubview(view)
+                    view.removeFromSuperview()
+                }
             }
             taskBlocks = []
             quotaBlocks = [:]
@@ -303,13 +324,13 @@ final class DashboardStripView: NSView {
             if visibleTasks.isEmpty {
                 let block = GlassBlockView()
                 block.set(text: "Codex · 等待任务", accent: .gray)
-                statusStack.addArrangedSubview(block)
+                taskStack.addArrangedSubview(block)
             } else {
                 for task in visibleTasks {
                     let block = GlassBlockView()
                     block.onTap = { [weak self] in self?.onTaskSelected?(task.sessionID) }
                     taskBlocks.append(block)
-                    statusStack.addArrangedSubview(block)
+                    taskStack.addArrangedSubview(block)
                 }
             }
             quotaBlocks[.fiveHour] = addQuotaBlock(kind: .fiveHour, accent: .teal)
@@ -343,7 +364,10 @@ final class DashboardStripView: NSView {
     @discardableResult
     private func addQuotaBlock(kind: QuotaKind, accent: GlassAccent) -> GlassBlockView {
         let block = GlassBlockView()
-        statusStack.addArrangedSubview(block)
+        let width = block.widthAnchor.constraint(equalToConstant: 88)
+        width.priority = .defaultHigh
+        NSLayoutConstraint.activate([width])
+        quotaStack.addArrangedSubview(block)
         updateQuotaBlock(block, kind: kind, window: nil, accent: accent)
         return block
     }
