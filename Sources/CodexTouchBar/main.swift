@@ -16,7 +16,7 @@ if CommandLine.arguments.contains("--media-capability-check") {
 }
 
 if CommandLine.arguments.contains("--activity-probe") {
-    let rows = CTBReadRecentCodexActivity(600)
+    let rows = CTBReadRecentCodexActivity(120)
     for row in rows.prefix(3) {
         if let id = row["id"] as? String { print(id) }
     }

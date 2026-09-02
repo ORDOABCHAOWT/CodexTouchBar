@@ -10,8 +10,13 @@ final class StatusStore {
     }
     private var hookTasksByID: [String: TaskSnapshot] = [:]
     private var detectedTasksByID: [String: TaskSnapshot] = [:]
+    // A `Stop` hook is authoritative. Keep a short in-memory tombstone so the
+    // log-index fallback cannot immediately resurrect that completed task.
+    private var suppressedDetectedTaskIDs: [String: Date] = [:]
     private var titlesByID: [String: String] = [:]
     private var cleanupTimer: Timer?
+
+    private let detectedTaskSuppression: TimeInterval = 3 * 60
 
     init() {
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -22,10 +27,21 @@ final class StatusStore {
     func accept(_ packet: HookPacket) {
         if packet.eventName == "SessionEnd" {
             hookTasksByID.removeValue(forKey: packet.sessionID)
+            suppressDetectedTask(packet.sessionID, at: packet.occurredAt)
             publish()
             return
         }
         guard let phase = packet.phase else { return }
+
+        if phase == .completed || phase == .failed {
+            hookTasksByID.removeValue(forKey: packet.sessionID)
+            suppressDetectedTask(packet.sessionID, at: packet.occurredAt)
+            publish()
+            return
+        }
+
+        // A new live event on the same thread means a new turn has started.
+        suppressedDetectedTaskIDs.removeValue(forKey: packet.sessionID)
 
         if phase == .idle, hookTasksByID[packet.sessionID] == nil {
             return
@@ -46,14 +62,18 @@ final class StatusStore {
     }
 
     func updateDetectedTasks(_ tasks: [TaskSnapshot]) {
-        detectedTasksByID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.sessionID, $0) })
+        let now = Date()
+        detectedTasksByID = Dictionary(uniqueKeysWithValues: tasks.compactMap { task in
+            isDetectedTaskSuppressed(task.sessionID, at: now) ? nil : (task.sessionID, task)
+        })
         publish()
     }
 
     func updateThreadTitles(_ titles: [String: String]) {
         titlesByID.merge(titles) { _, new in new }
-        for (id, title) in titles where hookTasksByID[id] != nil {
+        for (id, title) in titles {
             hookTasksByID[id]?.title = title
+            detectedTasksByID[id]?.title = title
         }
         publish()
     }
@@ -69,6 +89,7 @@ final class StatusStore {
 
     private func removeExpiredTasks() {
         let now = Date()
+        suppressedDetectedTaskIDs = suppressedDetectedTaskIDs.filter { _, expiresAt in expiresAt > now }
         hookTasksByID = hookTasksByID.filter { _, task in
             if task.phase == .completed || task.phase == .failed {
                 return now.timeIntervalSince(task.updatedAt) < 12
@@ -79,7 +100,8 @@ final class StatusStore {
     }
 
     private func publish() {
-        var merged = detectedTasksByID
+        let now = Date()
+        var merged = detectedTasksByID.filter { !isDetectedTaskSuppressed($0.key, at: now) }
         for (id, task) in hookTasksByID { merged[id] = task }
         snapshot.tasks = merged.values
             .sorted { lhs, rhs in
@@ -92,5 +114,15 @@ final class StatusStore {
             // Touch Bar's equal-fill stack compresses them as this grows.
             .prefix(6)
             .map { $0 }
+    }
+
+    private func suppressDetectedTask(_ sessionID: String, at date: Date) {
+        suppressedDetectedTaskIDs[sessionID] = date.addingTimeInterval(detectedTaskSuppression)
+        detectedTasksByID.removeValue(forKey: sessionID)
+    }
+
+    private func isDetectedTaskSuppressed(_ sessionID: String, at date: Date) -> Bool {
+        guard let expiresAt = suppressedDetectedTaskIDs[sessionID] else { return false }
+        return expiresAt > date
     }
 }
