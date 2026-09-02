@@ -338,17 +338,9 @@ final class DashboardStripView: NSView {
             statusLayoutKey = layoutKey
         }
 
-        let titleLimit: Int
-        switch visibleTasks.count {
-        case 0...2: titleLimit = 12
-        case 3: titleLimit = 10
-        case 4: titleLimit = 8
-        case 5: titleLimit = 7
-        default: titleLimit = 6
-        }
         for (task, block) in zip(visibleTasks, taskBlocks) {
             let elapsed = Self.elapsedString(since: task.startedAt)
-            let compactTitle = String(task.title.prefix(titleLimit))
+            let compactTitle = String(task.title.prefix(80))
             block.set(
                 text: "\(compactTitle) · \(Self.phaseGlyph(task.phase)) \(elapsed)",
                 accent: .forPhase(task.phase)

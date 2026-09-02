@@ -174,12 +174,12 @@ final class CodexAppServerClient {
         else { return [:] }
         var titles: [String: String] = [:]
         for thread in data {
-            guard
-                let id = thread["id"] as? String,
-                let name = thread["name"] as? String,
-                !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else { continue }
-            titles[id] = String(name.replacingOccurrences(of: "\n", with: " ").prefix(42))
+            guard let id = thread["id"] as? String else { continue }
+            let rawTitle = ["name", "title", "preview", "firstUserMessage"]
+                .compactMap { thread[$0] as? String }
+                .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            guard let rawTitle else { continue }
+            titles[id] = CodexActivityMonitor.displayTitle(from: rawTitle, fallback: "Codex")
         }
         return titles
     }

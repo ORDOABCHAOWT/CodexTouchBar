@@ -5,6 +5,7 @@ A lightweight native macOS companion that shows active Codex tasks and ChatGPT C
 ## First-version scope
 
 - Up to six active Codex desktop or CLI tasks, detected from local status metadata and showing the Codex thread/project title plus phase and elapsed time. Blocks expand into unused Touch Bar space and compress equally as more tasks appear.
+- The app bundle includes the supplied Codex Touch Bar icon.
 - Tap any task block to open its exact `codex://threads/<id>` page in the Codex desktop app.
 - Five-hour and weekly remaining quota, including reset time, from the official local Codex App Server protocol.
 - A Monterey-style glass treatment: flat translucent color, a fine luminous border, and rounded corners—without gradients.

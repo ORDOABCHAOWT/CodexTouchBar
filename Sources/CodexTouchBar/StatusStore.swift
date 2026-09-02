@@ -48,7 +48,10 @@ final class StatusStore {
         }
 
         let prior = hookTasksByID[packet.sessionID]
-        let title = titlesByID[packet.sessionID] ?? prior?.title ?? packet.workspaceName
+        let title = titlesByID[packet.sessionID]
+            ?? prior?.title
+            ?? detectedTasksByID[packet.sessionID]?.title
+            ?? packet.workspaceName
         hookTasksByID[packet.sessionID] = TaskSnapshot(
             sessionID: packet.sessionID,
             title: title,
@@ -66,6 +69,9 @@ final class StatusStore {
         detectedTasksByID = Dictionary(uniqueKeysWithValues: tasks.compactMap { task in
             isDetectedTaskSuppressed(task.sessionID, at: now) ? nil : (task.sessionID, task)
         })
+        for (id, task) in detectedTasksByID where hookTasksByID[id] != nil {
+            hookTasksByID[id]?.title = task.title
+        }
         publish()
     }
 

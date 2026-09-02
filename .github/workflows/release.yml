@@ -1,0 +1,28 @@
+name: Release app bundle
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify core behavior
+        run: ./scripts/verify_project.sh
+      - name: Build app bundle
+        run: ./scripts/build_app.sh
+      - name: Package app bundle
+        run: ditto -c -k --sequesterRsrc --keepParent dist/CodexTouchBar.app "dist/CodexTouchBar-${GITHUB_REF_NAME}.zip"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "dist/CodexTouchBar-${GITHUB_REF_NAME}.zip" --generate-notes

@@ -87,7 +87,9 @@ final class CodexActivityMonitor {
         let cleaned = (selected ?? fallback)
             .trimmingCharacters(in: CharacterSet(charactersIn: "#*`_- "))
             .replacingOccurrences(of: "\t", with: " ")
-        return String((nonempty(cleaned) ?? fallback).prefix(36))
+        // The Touch Bar button uses AppKit's tail truncation, so keep a useful
+        // title in memory and let its actual width decide how much is visible.
+        return String((nonempty(cleaned) ?? fallback).prefix(80))
     }
 
     private static func nonempty(_ value: String) -> String? {

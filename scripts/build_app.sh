@@ -6,6 +6,7 @@ PROJECT_DIR=${SCRIPT_DIR:h}
 APP_DIR="$PROJECT_DIR/dist/CodexTouchBar.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
+RESOURCES_DIR="$CONTENTS_DIR/Resources"
 SDK_PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
 MODULE_CACHE="${TMPDIR:-/private/tmp}/codex-touchbar-module-cache"
 
@@ -25,8 +26,10 @@ BUILD_DIR="$(env SDKROOT="$SDK_PATH" CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" SWI
 
 rm -rf -- "$APP_DIR"
 mkdir -p "$MACOS_DIR"
+mkdir -p "$RESOURCES_DIR"
 ditto "$BUILD_DIR/CodexTouchBar" "$MACOS_DIR/CodexTouchBar"
 ditto "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
+ditto "$PROJECT_DIR/Resources/CodexTouchBar.icns" "$RESOURCES_DIR/CodexTouchBar.icns"
 chmod 755 "$MACOS_DIR/CodexTouchBar"
 codesign --force --sign - --timestamp=none "$APP_DIR"
 plutil -lint "$CONTENTS_DIR/Info.plist"

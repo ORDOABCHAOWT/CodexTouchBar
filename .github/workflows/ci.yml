@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify core behavior
+        run: ./scripts/verify_project.sh
+      - name: Build app bundle
+        run: ./scripts/build_app.sh
+      - name: Verify bundle signature
+        run: codesign --verify --deep --strict dist/CodexTouchBar.app
+      - name: Upload unsigned app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexTouchBar-unsigned
+          path: dist/CodexTouchBar.app
+          if-no-files-found: error
