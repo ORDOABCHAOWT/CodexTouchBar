@@ -102,6 +102,9 @@ final class GlassBlockView: NSButton {
         cell?.lineBreakMode = .byTruncatingTail
         cell?.truncatesLastVisibleLine = true
         cell?.alignment = .center
+        // Trigger on touch-down so the physical Touch Bar's first tap is not
+        // lost while AppKit waits for a mouse-up event.
+        sendAction(on: [.leftMouseDown])
         layer?.cornerRadius = VisualVariant.current.cornerRadius
         layer?.masksToBounds = true
         layer?.addSublayer(tintLayer)
@@ -181,6 +184,7 @@ final class MediaButtonView: NSButton {
         contentTintColor = NSColor.white.withAlphaComponent(0.96)
         toolTip = label
         setAccessibilityLabel(label)
+        sendAction(on: [.leftMouseDown])
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: 48),
             heightAnchor.constraint(equalToConstant: 30),
@@ -197,6 +201,9 @@ final class DashboardStripView: NSView {
     private let statusStack = NSStackView()
     private var snapshot = DashboardSnapshot()
     private var tickTimer: Timer?
+    private var statusLayoutKey: [String]?
+    private var taskBlocks: [GlassBlockView] = []
+    private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -249,63 +256,85 @@ final class DashboardStripView: NSView {
     }
 
     private func rebuild() {
-        [leftMediaStack, statusStack].forEach { stack in
-            stack.arrangedSubviews.forEach { view in
-                stack.removeArrangedSubview(view)
-                view.removeFromSuperview()
-            }
+        // Keep the actual NSButton instances alive between timer ticks. Replacing
+        // them every second can invalidate a touch that is already in progress.
+        if leftMediaStack.arrangedSubviews.isEmpty {
+            leftMediaStack.addArrangedSubview(MediaButtonView(
+                symbolName: "backward.fill",
+                label: "上一首",
+                target: self,
+                action: #selector(previousTrack)
+            ))
+            leftMediaStack.addArrangedSubview(MediaButtonView(
+                symbolName: "playpause.fill",
+                label: "播放或暂停",
+                target: self,
+                action: #selector(togglePlayPause)
+            ))
+            leftMediaStack.addArrangedSubview(MediaButtonView(
+                symbolName: "forward.fill",
+                label: "下一首",
+                target: self,
+                action: #selector(nextTrack)
+            ))
         }
 
-        leftMediaStack.addArrangedSubview(MediaButtonView(
-            symbolName: "backward.fill",
-            label: "上一首",
-            target: self,
-            action: #selector(previousTrack)
-        ))
-        leftMediaStack.addArrangedSubview(MediaButtonView(
-            symbolName: "playpause.fill",
-            label: "播放或暂停",
-            target: self,
-            action: #selector(togglePlayPause)
-        ))
-        leftMediaStack.addArrangedSubview(MediaButtonView(
-            symbolName: "forward.fill",
-            label: "下一首",
-            target: self,
-            action: #selector(nextTrack)
-        ))
-
-        if snapshot.tasks.isEmpty {
-            let block = GlassBlockView()
-            block.set(text: "Codex · 等待任务", accent: .gray)
-            statusStack.addArrangedSubview(block)
-        } else {
-            for task in snapshot.tasks.prefix(3) {
-                let block = GlassBlockView()
-                let elapsed = Self.elapsedString(since: task.startedAt)
-                let titleLimit = snapshot.tasks.count >= 3 ? 4 : 7
-                let compactTitle = String(task.title.prefix(titleLimit))
-                block.set(
-                    text: "\(compactTitle) · \(Self.phaseGlyph(task.phase)) \(elapsed)",
-                    accent: .forPhase(task.phase)
-                )
-                block.onTap = { [weak self] in self?.onTaskSelected?(task.sessionID) }
-                statusStack.addArrangedSubview(block)
+        let visibleTasks = Array(snapshot.tasks.prefix(3))
+        let layoutKey = visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID)
+        if statusLayoutKey != layoutKey {
+            statusStack.arrangedSubviews.forEach { view in
+                statusStack.removeArrangedSubview(view)
+                view.removeFromSuperview()
             }
+            taskBlocks = []
+            quotaBlocks = [:]
+
+            if visibleTasks.isEmpty {
+                let block = GlassBlockView()
+                block.set(text: "Codex · 等待任务", accent: .gray)
+                statusStack.addArrangedSubview(block)
+            } else {
+                for task in visibleTasks {
+                    let block = GlassBlockView()
+                    block.onTap = { [weak self] in self?.onTaskSelected?(task.sessionID) }
+                    taskBlocks.append(block)
+                    statusStack.addArrangedSubview(block)
+                }
+            }
+            quotaBlocks[.fiveHour] = addQuotaBlock(kind: .fiveHour, accent: .teal)
+            quotaBlocks[.weekly] = addQuotaBlock(kind: .weekly, accent: .indigo)
+            statusLayoutKey = layoutKey
+        }
+
+        let titleLimit = visibleTasks.count >= 3 ? 4 : 7
+        for (task, block) in zip(visibleTasks, taskBlocks) {
+            let elapsed = Self.elapsedString(since: task.startedAt)
+            let compactTitle = String(task.title.prefix(titleLimit))
+            block.set(
+                text: "\(compactTitle) · \(Self.phaseGlyph(task.phase)) \(elapsed)",
+                accent: .forPhase(task.phase)
+            )
         }
 
         let quotaByKind = Dictionary(uniqueKeysWithValues: snapshot.quotas.map { ($0.kind, $0) })
-        addQuotaBlock(kind: .fiveHour, window: quotaByKind[.fiveHour], accent: .teal)
-        addQuotaBlock(kind: .weekly, window: quotaByKind[.weekly], accent: .indigo)
+        updateQuotaBlock(quotaBlocks[.fiveHour], kind: .fiveHour, window: quotaByKind[.fiveHour], accent: .teal)
+        updateQuotaBlock(quotaBlocks[.weekly], kind: .weekly, window: quotaByKind[.weekly], accent: .indigo)
 
     }
 
-    private func addQuotaBlock(kind: QuotaKind, window: QuotaWindow?, accent: GlassAccent) {
+    @discardableResult
+    private func addQuotaBlock(kind: QuotaKind, accent: GlassAccent) -> GlassBlockView {
         let block = GlassBlockView()
+        statusStack.addArrangedSubview(block)
+        updateQuotaBlock(block, kind: kind, window: nil, accent: accent)
+        return block
+    }
+
+    private func updateQuotaBlock(_ block: GlassBlockView?, kind: QuotaKind, window: QuotaWindow?, accent: GlassAccent) {
+        guard let block else { return }
         let prefix = kind == .fiveHour ? "5h" : "周"
         let value = window.map { "\(prefix) \($0.remainingPercent)%" } ?? "\(prefix) …"
         block.set(text: value, accent: accent)
-        statusStack.addArrangedSubview(block)
     }
 
     @objc private func previousTrack() { _ = MediaController.send(.previousTrack) }

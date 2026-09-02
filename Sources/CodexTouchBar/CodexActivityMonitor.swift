@@ -5,6 +5,11 @@ import TouchBarPrivateBridge
 final class CodexActivityMonitor {
     var onTasks: (([TaskSnapshot]) -> Void)?
 
+    // A running task can spend several minutes waiting for a model/tool event.
+    // Keep a wider read window so a quiet but still active project is not
+    // dropped from the Touch Bar after the previous 75-second window expires.
+    private let activityWindow: TimeInterval = 10 * 60
+
     private let queue = DispatchQueue(label: "com.whitney.CodexTouchBar.activity", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var firstSeen: [String: Date] = [:]
@@ -35,7 +40,7 @@ final class CodexActivityMonitor {
 
     private func refresh() {
         guard !stopped else { return }
-        let rows = CTBReadRecentCodexActivity(75)
+        let rows = CTBReadRecentCodexActivity(activityWindow)
         let now = Date()
         var liveIDs = Set<String>()
         let tasks: [TaskSnapshot] = rows.compactMap { row in
