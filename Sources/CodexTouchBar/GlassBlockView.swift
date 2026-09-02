@@ -212,6 +212,7 @@ final class DashboardStripView: NSView {
         leftMediaStack.spacing = 4
         leftMediaStack.setContentHuggingPriority(.required, for: .horizontal)
         leftMediaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let mediaGroupWidth = leftMediaStack.widthAnchor.constraint(equalToConstant: 152)
         statusStack.orientation = .horizontal
         statusStack.alignment = .centerY
         statusStack.spacing = 5
@@ -232,6 +233,7 @@ final class DashboardStripView: NSView {
             rootStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             rootStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
             rootStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            mediaGroupWidth,
             preferredStripWidth,
             preferredStatusWidth,
             heightAnchor.constraint(equalToConstant: 30),
