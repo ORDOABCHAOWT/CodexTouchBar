@@ -8,8 +8,9 @@ A lightweight native macOS companion that shows active Codex tasks and ChatGPT C
 - Tap any task block to open its exact `codex://threads/<id>` page in the Codex desktop app.
 - Five-hour and weekly remaining quota, including reset time, from the official local Codex App Server protocol.
 - A Monterey-style glass treatment: flat translucent color, a fine luminous border, and rounded corners—without gradients.
-- Actual previous, play/pause, and next-track controls in the side positions, without Accessibility or Input Monitoring permission.
-- Compact single-line 24-point blocks sized to avoid clipping on the physical Touch Bar.
+- Actual previous, play/pause, and next-track controls grouped together on the left, without Accessibility or Input Monitoring permission.
+- Native AppKit button hit-testing and press feedback for every interactive control; status blocks fill the available center region proportionally.
+- The private modal bar is shown only while `com.openai.codex` is frontmost and is dismissed when another app becomes active, restoring the system Touch Bar.
 - A built-in on-screen preview that uses the exact same views as the physical Touch Bar.
 - No prompt or transcript collection. No third-party runtime dependencies.
 
@@ -25,6 +26,8 @@ swift run CodexTouchBarCoreChecks
 ```
 
 The app bundle is written to `dist/CodexTouchBar.app`.
+
+The layout follows Apple's Touch Bar guidance: use AppKit controls and convenience sizing, let the system manage constrained composition, and use a principal item instead of hard-coded centering. See Apple's [NSTouchBar](https://developer.apple.com/documentation/appkit/nstouchbar?changes=l_11), [NSTouchBarItem](https://developer.apple.com/documentation/appkit/nstouchbaritem?language=objc), and [Buttons HIG](https://developer.apple.com/design/human-interface-guidelines/buttons).
 
 ## Task status connection
 

@@ -3,6 +3,13 @@ import CodexTouchBarCore
 import Foundation
 import TouchBarPrivateBridge
 
+if let variantValue = CommandLine.arguments.firstIndex(of: "--variant").flatMap({ index in
+    let next = CommandLine.arguments.index(after: index)
+    return next < CommandLine.arguments.endIndex ? Int(CommandLine.arguments[next]) : nil
+}) {
+    VisualVariant.current = VisualVariant(rawValue: variantValue) ?? .balanced
+}
+
 if CommandLine.arguments.contains("--media-capability-check") {
     print(CTBMediaRemoteAvailable() ? "available" : "unavailable")
     exit(CTBMediaRemoteAvailable() ? EXIT_SUCCESS : EXIT_FAILURE)

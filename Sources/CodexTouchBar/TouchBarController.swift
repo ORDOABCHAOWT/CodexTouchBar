@@ -9,6 +9,9 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     private let dashboardView = DashboardStripView(frame: .zero)
     private let touchBar = NSTouchBar()
     private var trayItem: NSCustomTouchBarItem?
+    private var workspaceObserver: NSObjectProtocol?
+    private var isInstalled = false
+    private let codexBundleIdentifiers: Set<String> = ["com.openai.codex", "com.openai.chatgpt"]
 
     private(set) var privateAPIAvailable = false
 
@@ -20,6 +23,15 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         touchBar.delegate = self
         touchBar.defaultItemIdentifiers = [dashboardIdentifier]
         touchBar.principalItemIdentifier = dashboardIdentifier
+        workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateForFrontmostApplication()
+            }
+        }
     }
 
     func install() {
@@ -34,12 +46,17 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         item.view = button
         trayItem = item
         if CTBAddSystemTrayItem(item) {
-            CTBSetControlStripPresence(trayIdentifier.rawValue, true)
-            _ = CTBPresentSystemModalTouchBar(touchBar, trayIdentifier.rawValue)
+            isInstalled = true
+            updateForFrontmostApplication()
         }
     }
 
     func uninstall() {
+        isInstalled = false
+        if let workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
+            self.workspaceObserver = nil
+        }
         CTBDismissSystemModalTouchBar(touchBar)
         CTBSetControlStripPresence(trayIdentifier.rawValue, false)
         if let trayItem { CTBRemoveSystemTrayItem(trayItem) }
@@ -51,8 +68,24 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     }
 
     @objc func present() {
-        guard privateAPIAvailable else { return }
+        guard privateAPIAvailable, isInstalled, isCodexFrontmost else { return }
+        CTBSetControlStripPresence(trayIdentifier.rawValue, true)
         _ = CTBPresentSystemModalTouchBar(touchBar, trayIdentifier.rawValue)
+    }
+
+    private var isCodexFrontmost: Bool {
+        guard let bundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return false }
+        return codexBundleIdentifiers.contains(bundleIdentifier)
+    }
+
+    private func updateForFrontmostApplication() {
+        guard privateAPIAvailable, isInstalled else { return }
+        if isCodexFrontmost {
+            present()
+        } else {
+            CTBDismissSystemModalTouchBar(touchBar)
+            CTBSetControlStripPresence(trayIdentifier.rawValue, false)
+        }
     }
 
     func touchBar(_ touchBar: NSTouchBar, makeItemForIdentifier identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
