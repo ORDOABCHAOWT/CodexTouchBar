@@ -15,6 +15,15 @@ if CommandLine.arguments.contains("--media-capability-check") {
     exit(CTBMediaRemoteAvailable() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
+if CommandLine.arguments.contains("--chrome-tab-probe") {
+    guard let tabs = ChromeTabController.frontWindowTabs(), !tabs.isEmpty else {
+        print("unavailable")
+        exit(EXIT_FAILURE)
+    }
+    print("tabs=\(tabs.count) active=\(tabs.filter(\.isActive).count)")
+    exit(tabs.filter(\.isActive).count == 1 ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
 if CommandLine.arguments.contains("--activity-probe") {
     let rows = CTBReadRecentCodexActivity(120)
     let titledRows = rows.filter { row in

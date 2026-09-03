@@ -1,8 +1,8 @@
 # CodexTouchBar
 
-A lightweight native macOS companion that shows active Codex tasks and ChatGPT Codex quota windows as colored glass blocks on MacBook Pro Touch Bar models.
+A lightweight native macOS companion that shows active Codex tasks, quota windows, and Google Chrome tabs as colored glass blocks on MacBook Pro Touch Bar models.
 
-## First-version scope
+## Current scope
 
 - Up to six active Codex desktop or CLI tasks, detected from local status metadata and showing the same compact display title as Codex's task list, plus phase and elapsed time. Request bodies are never used directly as labels. Blocks expand into unused Touch Bar space and compress equally as more tasks appear.
 - The app bundle includes the supplied Codex Touch Bar icon.
@@ -11,7 +11,9 @@ A lightweight native macOS companion that shows active Codex tasks and ChatGPT C
 - A Monterey-style glass treatment: flat translucent color, a fine luminous border, and rounded corners—without gradients.
 - Actual previous, play/pause, and next-track controls grouped together on the left, without Accessibility or Input Monitoring permission.
 - Native AppKit button hit-testing and press feedback for every interactive control; the first physical touch sends the action and status blocks fill the available Touch Bar region proportionally.
-- The private modal bar is shown only while `com.openai.codex` is frontmost and is dismissed when another app becomes active, restoring the system Touch Bar.
+- The private modal bar is shown while Codex or Google Chrome is frontmost and is dismissed when another app becomes active, restoring the system Touch Bar.
+- When Google Chrome is frontmost, the same bar shows every tab in Chrome's front window. The active tab is highlighted and a first touch switches directly to the selected tab.
+- Switching between Codex and Chrome automatically swaps the Touch Bar content; switching to any other app restores the system Touch Bar.
 - A built-in on-screen preview that uses the exact same views as the physical Touch Bar.
 - No prompt or transcript collection. No third-party runtime dependencies.
 
@@ -46,6 +48,8 @@ The hook helper accepts only:
 - event time
 
 It ignores transcript paths, absolute working directories, prompts, responses, tool inputs, tool outputs, models, and permission mode. Status is transferred through a user-only Unix socket and kept in memory. The desktop-task fallback reads only task IDs and timestamps from Codex's local log index, then resolves the compact `display_title` maintained by Codex's local task catalog. It never uses generated database `title`, `preview`, first-message, or log-body fields as labels, and never writes task data to disk.
+
+Chrome mode requests macOS Automation permission for Google Chrome. It reads only the front window's tab titles, window identifier, selected-tab index, and tab ordering. These values stay in memory, are refreshed while Chrome is frontmost, and are never written to disk; URLs and page contents are not read.
 
 ## Third-party acknowledgement
 

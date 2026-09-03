@@ -206,6 +206,30 @@ final class DashboardStripView: NSView {
     private var statusLayoutKey: [String]?
     private var taskBlocks: [GlassBlockView] = []
     private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
+    private var quotaWidthConstraint: NSLayoutConstraint?
+    private var chromeTabs: [ChromeTabSnapshot] = []
+    private var chromeStatusText: String?
+    private var isChromeMode = false
+    var onChromeTabSelected: ((Int64, Int) -> Void)?
+
+    func updateChromeTabs(_ tabs: [ChromeTabSnapshot], statusText: String? = nil) {
+        isChromeMode = true
+        chromeTabs = tabs
+        chromeStatusText = statusText
+        quotaStack.isHidden = true
+        quotaWidthConstraint?.isActive = false
+        rebuild()
+    }
+    func showCodex() {
+        guard isChromeMode else { return }
+        isChromeMode = false
+        chromeTabs = []
+        chromeStatusText = nil
+        quotaStack.isHidden = false
+        quotaWidthConstraint?.isActive = true
+        statusLayoutKey = nil
+        rebuild()
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -242,6 +266,7 @@ final class DashboardStripView: NSView {
         quotaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: 181)
         preferredQuotaWidth.priority = .defaultHigh
+        quotaWidthConstraint = preferredQuotaWidth
         // Use the native 13-inch Touch Bar width as a preferred size. The
         // constraint is intentionally high-but-breakable: on a narrower bar
         // AppKit must shrink the equal-fill status blocks instead of clipping
@@ -307,6 +332,38 @@ final class DashboardStripView: NSView {
                 target: self,
                 action: #selector(nextTrack)
             ))
+        }
+
+        if isChromeMode {
+            let layoutKey = ["__chrome__", chromeStatusText ?? ""]
+                + chromeTabs.map { "\($0.windowID):\($0.tabIndex)" }
+            if statusLayoutKey != layoutKey {
+                [taskStack, quotaStack].forEach { stack in
+                    stack.arrangedSubviews.forEach { view in
+                        stack.removeArrangedSubview(view)
+                        view.removeFromSuperview()
+                    }
+                }
+                taskBlocks = []
+                for tab in chromeTabs {
+                    let block = GlassBlockView()
+                    block.onTap = { [weak self] in
+                        self?.onChromeTabSelected?(tab.windowID, tab.tabIndex)
+                    }
+                    taskBlocks.append(block)
+                    taskStack.addArrangedSubview(block)
+                }
+                if chromeTabs.isEmpty {
+                    let block = GlassBlockView()
+                    block.set(text: chromeStatusText ?? "Chrome · 无标签页", accent: .gray)
+                    taskStack.addArrangedSubview(block)
+                }
+                statusLayoutKey = layoutKey
+            }
+            for (tab, block) in zip(chromeTabs, taskBlocks) {
+                block.set(text: tab.title, accent: tab.isActive ? .blue : .gray)
+            }
+            return
         }
 
         let visibleTasks = Array(snapshot.tasks.prefix(6))

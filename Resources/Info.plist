@@ -19,15 +19,17 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.4</string>
+    <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>8</string>
+    <string>9</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>CodexTouchBar 需要读取当前 Chrome 窗口的标签标题，并在您触控按钮时切换到对应标签页。</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 Whitney</string>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
