@@ -56,7 +56,7 @@ final class CodexActivityMonitor {
             let rawTitle = row["rawTitle"] as? String ?? ""
             return TaskSnapshot(
                 sessionID: id,
-                title: Self.displayTitle(from: rawTitle, fallback: workspace),
+                title: Self.displayTitle(from: rawTitle, fallback: "Codex 任务"),
                 workspaceName: workspace,
                 phase: .thinking,
                 toolName: nil,

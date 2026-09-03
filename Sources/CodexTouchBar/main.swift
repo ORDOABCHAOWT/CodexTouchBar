@@ -17,10 +17,14 @@ if CommandLine.arguments.contains("--media-capability-check") {
 
 if CommandLine.arguments.contains("--activity-probe") {
     let rows = CTBReadRecentCodexActivity(120)
-    for row in rows.prefix(3) {
+    let titledRows = rows.filter { row in
+        guard let title = row["rawTitle"] as? String else { return false }
+        return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    for row in titledRows.prefix(3) {
         if let id = row["id"] as? String { print(id) }
     }
-    exit(rows.isEmpty ? EXIT_FAILURE : EXIT_SUCCESS)
+    exit(titledRows.isEmpty ? EXIT_FAILURE : EXIT_SUCCESS)
 }
 
 if CommandLine.arguments.contains("--hook") {

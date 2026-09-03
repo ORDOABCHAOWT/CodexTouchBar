@@ -166,8 +166,10 @@ NSArray<NSDictionary<NSString *, id> *> *CTBReadRecentCodexActivity(NSTimeInterv
     NSString *codexDirectory = [NSHomeDirectory() stringByAppendingPathComponent:@".codex"];
     NSString *logsPath = [codexDirectory stringByAppendingPathComponent:@"logs_2.sqlite"];
     NSString *statePath = [codexDirectory stringByAppendingPathComponent:@"state_5.sqlite"];
+    NSString *catalogPath = [codexDirectory stringByAppendingPathComponent:@"sqlite/codex-dev.db"];
     sqlite3 *logs = NULL;
     sqlite3 *state = NULL;
+    sqlite3 *catalog = NULL;
     NSMutableArray<NSDictionary<NSString *, id> *> *rows = [NSMutableArray array];
 
     int flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
@@ -179,6 +181,12 @@ NSArray<NSDictionary<NSString *, id> *> *CTBReadRecentCodexActivity(NSTimeInterv
     }
     sqlite3_busy_timeout(logs, 150);
     sqlite3_busy_timeout(state, 150);
+    if (sqlite3_open_v2(catalogPath.fileSystemRepresentation, &catalog, flags, NULL) == SQLITE_OK) {
+        sqlite3_busy_timeout(catalog, 150);
+    } else {
+        if (catalog != NULL) sqlite3_close(catalog);
+        catalog = NULL;
+    }
 
     const char *activitySQL =
         "SELECT thread_id, MAX(ts) FROM logs "
@@ -186,13 +194,17 @@ NSArray<NSDictionary<NSString *, id> *> *CTBReadRecentCodexActivity(NSTimeInterv
         "AND target IN ('codex_core::stream_events_utils','codex_core::session::turn',"
         "'codex_core::session::world_state','codex_core::tools::parallel','codex_goal_extension::runtime') "
         "GROUP BY thread_id ORDER BY MAX(ts) DESC LIMIT 12";
-    const char *threadSQL =
-        // title and preview may be derived from request body content.
-        // Only an explicitly assigned name is safe for the Touch Bar.
-        "SELECT COALESCE(NULLIF(name,''), ''), cwd, source "
-        "FROM threads WHERE id = ? LIMIT 1";
+    const char *threadSQL = "SELECT cwd, source FROM threads WHERE id = ? LIMIT 1";
+    const char *catalogSQL =
+        "SELECT display_title FROM local_thread_catalog "
+        "WHERE host_id = 'local' AND thread_id = ? LIMIT 1";
     sqlite3_stmt *activityStatement = NULL;
     sqlite3_stmt *threadStatement = NULL;
+    sqlite3_stmt *catalogStatement = NULL;
+
+    if (catalog != NULL) {
+        sqlite3_prepare_v2(catalog, catalogSQL, -1, &catalogStatement, NULL);
+    }
 
     if (sqlite3_prepare_v2(logs, activitySQL, -1, &activityStatement, NULL) == SQLITE_OK &&
         sqlite3_prepare_v2(state, threadSQL, -1, &threadStatement, NULL) == SQLITE_OK) {
@@ -207,12 +219,20 @@ NSArray<NSDictionary<NSString *, id> *> *CTBReadRecentCodexActivity(NSTimeInterv
             sqlite3_bind_text(threadStatement, 1, threadID.UTF8String, -1, SQLITE_TRANSIENT);
             if (sqlite3_step(threadStatement) != SQLITE_ROW) continue;
 
-            NSString *source = CTBTextColumn(threadStatement, 2);
+            NSString *source = CTBTextColumn(threadStatement, 1);
             if ([source rangeOfString:@"subagent" options:NSCaseInsensitiveSearch].location != NSNotFound) {
                 continue;
             }
-            NSString *rawTitle = CTBTextColumn(threadStatement, 0);
-            NSString *cwd = CTBTextColumn(threadStatement, 1);
+            NSString *rawTitle = @"";
+            if (catalogStatement != NULL) {
+                sqlite3_reset(catalogStatement);
+                sqlite3_clear_bindings(catalogStatement);
+                sqlite3_bind_text(catalogStatement, 1, threadID.UTF8String, -1, SQLITE_TRANSIENT);
+                if (sqlite3_step(catalogStatement) == SQLITE_ROW) {
+                    rawTitle = CTBTextColumn(catalogStatement, 0);
+                }
+            }
+            NSString *cwd = CTBTextColumn(threadStatement, 0);
             NSString *workspace = cwd.lastPathComponent.length > 0 ? cwd.lastPathComponent : @"Codex";
             [rows addObject:@{
                 @"id": threadID,
@@ -225,7 +245,9 @@ NSArray<NSDictionary<NSString *, id> *> *CTBReadRecentCodexActivity(NSTimeInterv
 
     if (activityStatement != NULL) sqlite3_finalize(activityStatement);
     if (threadStatement != NULL) sqlite3_finalize(threadStatement);
+    if (catalogStatement != NULL) sqlite3_finalize(catalogStatement);
     sqlite3_close(logs);
     sqlite3_close(state);
+    if (catalog != NULL) sqlite3_close(catalog);
     return rows;
 }

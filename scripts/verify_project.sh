@@ -32,4 +32,10 @@ if rg -n \
   exit 1
 fi
 
+if ! rg -q 'SELECT display_title FROM local_thread_catalog' \
+  Sources/TouchBarPrivateBridge/TouchBarPrivateBridge.m; then
+  print -u2 "Codex task-list display_title source is missing"
+  exit 1
+fi
+
 print "CodexTouchBar verification passed"
