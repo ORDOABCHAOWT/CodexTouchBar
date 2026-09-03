@@ -25,4 +25,11 @@ if rg -n --hidden --glob '!\.git/**' --glob '!\.build/**' --glob '!dist/**' \
   exit 1
 fi
 
+if rg -n \
+  '(thread\["(title|preview|firstUserMessage)"\]|NULLIF\((title|preview|first_user_message))' \
+  Sources/CodexTouchBar Sources/TouchBarPrivateBridge; then
+  print -u2 "Request-derived text is used as a Touch Bar label source"
+  exit 1
+fi
+
 print "CodexTouchBar verification passed"

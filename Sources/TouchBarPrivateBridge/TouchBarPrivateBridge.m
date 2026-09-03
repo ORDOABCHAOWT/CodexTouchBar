@@ -187,9 +187,9 @@ NSArray<NSDictionary<NSString *, id> *> *CTBReadRecentCodexActivity(NSTimeInterv
         "'codex_core::session::world_state','codex_core::tools::parallel','codex_goal_extension::runtime') "
         "GROUP BY thread_id ORDER BY MAX(ts) DESC LIMIT 12";
     const char *threadSQL =
-        // Read only Codex's explicit thread/project title. Do not fall back to
-        // the preview column: it can contain a user's request body.
-        "SELECT COALESCE(NULLIF(name,''), NULLIF(title,''), ''), cwd, source "
+        // title and preview may be derived from request body content.
+        // Only an explicitly assigned name is safe for the Touch Bar.
+        "SELECT COALESCE(NULLIF(name,''), ''), cwd, source "
         "FROM threads WHERE id = ? LIMIT 1";
     sqlite3_stmt *activityStatement = NULL;
     sqlite3_stmt *threadStatement = NULL;

@@ -4,7 +4,7 @@ A lightweight native macOS companion that shows active Codex tasks and ChatGPT C
 
 ## First-version scope
 
-- Up to six active Codex desktop or CLI tasks, detected from local status metadata and showing the Codex thread/project title plus phase and elapsed time. Blocks expand into unused Touch Bar space and compress equally as more tasks appear.
+- Up to six active Codex desktop or CLI tasks, detected from local status metadata and showing only an explicitly assigned task name or the project-folder name, plus phase and elapsed time. Request bodies and generated thread summaries are never used as labels. Blocks expand into unused Touch Bar space and compress equally as more tasks appear.
 - The app bundle includes the supplied Codex Touch Bar icon.
 - Tap any task block to open its exact `codex://threads/<id>` page in the Codex desktop app.
 - Five-hour and weekly remaining quota, including reset time, from the official local Codex App Server protocol.
@@ -45,7 +45,7 @@ The hook helper accepts only:
 - canonical tool name
 - event time
 
-It ignores transcript paths, absolute working directories, prompts, responses, tool inputs, tool outputs, models, and permission mode. Status is transferred through a user-only Unix socket and kept in memory. The desktop-task fallback reads only task IDs and timestamps from Codex's local log index, then resolves an in-memory display title from the local thread index; it never reads log bodies or writes task data to disk.
+It ignores transcript paths, absolute working directories, prompts, responses, tool inputs, tool outputs, models, and permission mode. Status is transferred through a user-only Unix socket and kept in memory. The desktop-task fallback reads only task IDs and timestamps from Codex's local log index, then resolves an explicitly assigned name or project-folder basename from the local thread index; it never uses generated titles, previews, first messages, or log bodies as labels, and never writes task data to disk.
 
 ## Third-party acknowledgement
 

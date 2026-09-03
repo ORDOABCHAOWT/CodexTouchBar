@@ -175,13 +175,12 @@ final class CodexAppServerClient {
         var titles: [String: String] = [:]
         for thread in data {
             guard let id = thread["id"] as? String else { continue }
-            // Only use Codex's explicit thread/project title. Message previews
-            // and first-user-message fields are request body content, so they
-            // must never become Touch Bar text.
-            let rawTitle = ["name", "title"]
-                .compactMap { thread[$0] as? String }
-                .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            guard let rawTitle else { continue }
+            // title, preview, and firstUserMessage can all be derived from
+            // request body content. Only an explicit thread name is safe to
+            // use as a Touch Bar project label.
+            let rawTitle = (thread["name"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let rawTitle, !rawTitle.isEmpty else { continue }
             titles[id] = CodexActivityMonitor.displayTitle(from: rawTitle, fallback: "Codex")
         }
         return titles
