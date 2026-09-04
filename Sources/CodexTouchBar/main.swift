@@ -24,6 +24,36 @@ if CommandLine.arguments.contains("--chrome-tab-probe") {
     exit(tabs.filter(\.isActive).count == 1 ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
+if CommandLine.arguments.contains("--chrome-tab-switch-probe") {
+    guard
+        let before = ChromeTabController.frontWindowTabs(),
+        let original = before.first(where: \.isActive),
+        let target = before.first(where: { !$0.isActive }) ?? before.first
+    else {
+        print("unavailable")
+        exit(EXIT_FAILURE)
+    }
+
+    let switched = ChromeTabController.activate(windowID: target.windowID, tabID: target.tabID)
+    Thread.sleep(forTimeInterval: 0.35)
+    let selectedTarget = ChromeTabController.frontWindowTabs()?.contains {
+        $0.tabID == target.tabID && $0.isActive
+    } ?? false
+
+    var restored = true
+    if target.tabID != original.tabID {
+        restored = ChromeTabController.activate(windowID: original.windowID, tabID: original.tabID)
+        Thread.sleep(forTimeInterval: 0.35)
+        restored = restored && (ChromeTabController.frontWindowTabs()?.contains {
+            $0.tabID == original.tabID && $0.isActive
+        } ?? false)
+    }
+
+    let success = switched && selectedTarget && restored
+    print("tabs=\(before.count) switch=\(selectedTarget ? "matched" : "failed") restore=\(restored ? "matched" : "failed")")
+    exit(success ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
 if CommandLine.arguments.contains("--activity-probe") {
     let rows = CTBReadRecentCodexActivity(120)
     let titledRows = rows.filter { row in

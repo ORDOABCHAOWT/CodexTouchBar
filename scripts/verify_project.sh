@@ -38,4 +38,22 @@ if ! grep -q 'SELECT display_title FROM local_thread_catalog' \
   exit 1
 fi
 
+if ! grep -q 'id of tab currentIndex of targetWindow' \
+  Sources/CodexTouchBar/ChromeTabController.swift; then
+  print -u2 "Chrome tab switching is not resolving the stable tab identifier at touch time"
+  exit 1
+fi
+
+if grep -q 'activate(windowID:.*tabIndex:' \
+  Sources/CodexTouchBar/ChromeTabController.swift Sources/CodexTouchBar/TouchBarController.swift; then
+  print -u2 "Chrome tab switching still depends on a stale tab index"
+  exit 1
+fi
+
+if ! grep -q 'leftMediaStack.isHidden = true' \
+  Sources/CodexTouchBar/GlassBlockView.swift; then
+  print -u2 "Chrome mode still reserves space for media controls"
+  exit 1
+fi
+
 print "CodexTouchBar verification passed"

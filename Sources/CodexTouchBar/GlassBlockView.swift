@@ -194,6 +194,92 @@ final class MediaButtonView: NSButton {
     required init?(coder: NSCoder) { nil }
 }
 
+/// A browser-tab control with its own visual language. Unlike Codex's glass
+/// status blocks it has no colored dot or tinted fill: the selected tab uses a
+/// slim blue top indicator, while inactive tabs recede into a neutral strip.
+final class ChromeTabButtonView: NSButton {
+    var onTap: (() -> Void)? {
+        didSet {
+            target = self
+            action = #selector(handleTap)
+            setAccessibilityRole(.button)
+        }
+    }
+
+    private let backgroundLayer = CAShapeLayer()
+    private let outlineLayer = CAShapeLayer()
+    private let selectionLayer = CALayer()
+
+    init() {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        isBordered = false
+        focusRingType = .none
+        imagePosition = .noImage
+        cell?.usesSingleLineMode = true
+        cell?.wraps = false
+        cell?.lineBreakMode = .byTruncatingTail
+        cell?.truncatesLastVisibleLine = true
+        cell?.alignment = .center
+        sendAction(on: [.leftMouseDown])
+
+        backgroundLayer.fillColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        outlineLayer.fillColor = NSColor.clear.cgColor
+        outlineLayer.lineWidth = 0.75
+        selectionLayer.backgroundColor = NSColor.systemBlue.cgColor
+        selectionLayer.isHidden = true
+        layer?.addSublayer(backgroundLayer)
+        layer?.addSublayer(outlineLayer)
+        layer?.addSublayer(selectionLayer)
+
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        NSLayoutConstraint.activate([heightAnchor.constraint(equalToConstant: 30)])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func handleTap() { onTap?() }
+
+    func set(title: String, isActive: Bool) {
+        toolTip = title
+        setAccessibilityLabel(title)
+        attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .foregroundColor: NSColor.white.withAlphaComponent(isActive ? 1 : 0.82),
+                .font: NSFont.systemFont(ofSize: 11.5, weight: isActive ? .semibold : .regular),
+            ]
+        )
+        backgroundLayer.fillColor = NSColor.white.withAlphaComponent(isActive ? 0.20 : 0.075).cgColor
+        outlineLayer.strokeColor = NSColor.white.withAlphaComponent(isActive ? 0.48 : 0.18).cgColor
+        selectionLayer.isHidden = !isActive
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        backgroundLayer.opacity = isHighlighted ? 0.58 : 1
+    }
+
+    override func layout() {
+        super.layout()
+        let path = CGPath(
+            roundedRect: bounds.insetBy(dx: 0.4, dy: 0.4),
+            cornerWidth: 5,
+            cornerHeight: 5,
+            transform: nil
+        )
+        backgroundLayer.frame = bounds
+        backgroundLayer.path = path
+        outlineLayer.frame = bounds
+        outlineLayer.path = path
+        selectionLayer.frame = NSRect(x: 6, y: bounds.height - 2.4, width: max(0, bounds.width - 12), height: 1.8)
+        selectionLayer.cornerRadius = 0.9
+    }
+}
+
 final class DashboardStripView: NSView {
     var onTaskSelected: ((String) -> Void)?
     private let rootStack = NSStackView()
@@ -205,17 +291,21 @@ final class DashboardStripView: NSView {
     private var tickTimer: Timer?
     private var statusLayoutKey: [String]?
     private var taskBlocks: [GlassBlockView] = []
+    private var chromeTabBlocks: [ChromeTabButtonView] = []
     private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
     private var quotaWidthConstraint: NSLayoutConstraint?
+    private var mediaGroupWidthConstraint: NSLayoutConstraint?
     private var chromeTabs: [ChromeTabSnapshot] = []
     private var chromeStatusText: String?
     private var isChromeMode = false
-    var onChromeTabSelected: ((Int64, Int) -> Void)?
+    var onChromeTabSelected: ((Int64, Int64) -> Void)?
 
     func updateChromeTabs(_ tabs: [ChromeTabSnapshot], statusText: String? = nil) {
         isChromeMode = true
         chromeTabs = tabs
         chromeStatusText = statusText
+        leftMediaStack.isHidden = true
+        mediaGroupWidthConstraint?.isActive = false
         quotaStack.isHidden = true
         quotaWidthConstraint?.isActive = false
         rebuild()
@@ -225,6 +315,8 @@ final class DashboardStripView: NSView {
         isChromeMode = false
         chromeTabs = []
         chromeStatusText = nil
+        leftMediaStack.isHidden = false
+        mediaGroupWidthConstraint?.isActive = true
         quotaStack.isHidden = false
         quotaWidthConstraint?.isActive = true
         statusLayoutKey = nil
@@ -246,6 +338,7 @@ final class DashboardStripView: NSView {
         leftMediaStack.setContentHuggingPriority(.required, for: .horizontal)
         leftMediaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         let mediaGroupWidth = leftMediaStack.widthAnchor.constraint(equalToConstant: 152)
+        mediaGroupWidthConstraint = mediaGroupWidth
         statusStack.orientation = .horizontal
         statusStack.alignment = .centerY
         statusStack.spacing = 5
@@ -336,7 +429,7 @@ final class DashboardStripView: NSView {
 
         if isChromeMode {
             let layoutKey = ["__chrome__", chromeStatusText ?? ""]
-                + chromeTabs.map { "\($0.windowID):\($0.tabIndex)" }
+                + chromeTabs.map { "\($0.windowID):\($0.tabID)" }
             if statusLayoutKey != layoutKey {
                 [taskStack, quotaStack].forEach { stack in
                     stack.arrangedSubviews.forEach { view in
@@ -345,12 +438,13 @@ final class DashboardStripView: NSView {
                     }
                 }
                 taskBlocks = []
+                chromeTabBlocks = []
                 for tab in chromeTabs {
-                    let block = GlassBlockView()
+                    let block = ChromeTabButtonView()
                     block.onTap = { [weak self] in
-                        self?.onChromeTabSelected?(tab.windowID, tab.tabIndex)
+                        self?.onChromeTabSelected?(tab.windowID, tab.tabID)
                     }
-                    taskBlocks.append(block)
+                    chromeTabBlocks.append(block)
                     taskStack.addArrangedSubview(block)
                 }
                 if chromeTabs.isEmpty {
@@ -360,8 +454,8 @@ final class DashboardStripView: NSView {
                 }
                 statusLayoutKey = layoutKey
             }
-            for (tab, block) in zip(chromeTabs, taskBlocks) {
-                block.set(text: tab.title, accent: tab.isActive ? .blue : .gray)
+            for (tab, block) in zip(chromeTabs, chromeTabBlocks) {
+                block.set(title: tab.title, isActive: tab.isActive)
             }
             return
         }
@@ -376,6 +470,7 @@ final class DashboardStripView: NSView {
                 }
             }
             taskBlocks = []
+            chromeTabBlocks = []
             quotaBlocks = [:]
 
             if visibleTasks.isEmpty {

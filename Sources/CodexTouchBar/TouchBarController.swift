@@ -22,8 +22,9 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         dashboardView.onTaskSelected = { sessionID in
             _ = ThreadNavigator.open(sessionID: sessionID)
         }
-        dashboardView.onChromeTabSelected = { windowID, index in
-            _ = ChromeTabController.activate(windowID: windowID, tabIndex: index)
+        dashboardView.onChromeTabSelected = { [weak self] windowID, tabID in
+            _ = ChromeTabController.activate(windowID: windowID, tabID: tabID)
+            self?.refreshChromeTabs()
         }
         touchBar.delegate = self
         touchBar.defaultItemIdentifiers = [dashboardIdentifier]
