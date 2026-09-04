@@ -39,6 +39,11 @@ final class PreviewWindowController: NSWindowController {
         statusLabel.stringValue = "\(taskCount) 个活动任务 · \(quotaState)"
     }
 
+    func updateChromeTabs(_ tabs: [ChromeTabSnapshot]) {
+        dashboardView.updateChromeTabs(tabs)
+        statusLabel.stringValue = "Chrome 标签栏预览 · \(tabs.count) 个标签"
+    }
+
     func show() {
         showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)

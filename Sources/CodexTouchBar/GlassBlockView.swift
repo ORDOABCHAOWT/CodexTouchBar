@@ -208,6 +208,12 @@ final class ChromeTabButtonView: NSButton {
     private let backgroundLayer = CAShapeLayer()
     private let outlineLayer = CAShapeLayer()
     private let selectionLayer = CALayer()
+    private let titleLayer = CATextLayer()
+    private let chromeMarkLayer = CALayer()
+    private let chromeRedLayer = CAShapeLayer()
+    private let chromeYellowLayer = CAShapeLayer()
+    private let chromeGreenLayer = CAShapeLayer()
+    private let chromeBlueLayer = CAShapeLayer()
 
     init() {
         super.init(frame: .zero)
@@ -221,6 +227,7 @@ final class ChromeTabButtonView: NSButton {
         cell?.lineBreakMode = .byTruncatingTail
         cell?.truncatesLastVisibleLine = true
         cell?.alignment = .center
+        title = ""
         sendAction(on: [.leftMouseDown])
 
         backgroundLayer.fillColor = NSColor(srgbRed: 0.125, green: 0.129, blue: 0.141, alpha: 0.96).cgColor
@@ -228,9 +235,16 @@ final class ChromeTabButtonView: NSButton {
         outlineLayer.lineWidth = 0.75
         selectionLayer.backgroundColor = NSColor(srgbRed: 0.54, green: 0.71, blue: 0.98, alpha: 1).cgColor
         selectionLayer.isHidden = true
+        titleLayer.alignmentMode = .left
+        titleLayer.truncationMode = .end
+        titleLayer.isWrapped = false
+        titleLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        configureChromeMark()
         layer?.addSublayer(backgroundLayer)
         layer?.addSublayer(outlineLayer)
         layer?.addSublayer(selectionLayer)
+        layer?.addSublayer(chromeMarkLayer)
+        layer?.addSublayer(titleLayer)
 
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -244,24 +258,31 @@ final class ChromeTabButtonView: NSButton {
     func set(title: String, isActive: Bool) {
         toolTip = title
         setAccessibilityLabel(title)
-        attributedTitle = NSAttributedString(
+        let font = NSFont.systemFont(ofSize: 11.5, weight: isActive ? .semibold : .regular)
+        let titleColor = NSColor(
+            srgbRed: 0.91,
+            green: 0.92,
+            blue: 0.94,
+            alpha: isActive ? 1 : 0.82
+        )
+        titleLayer.string = NSAttributedString(
             string: title,
             attributes: [
-                .foregroundColor: NSColor(srgbRed: 0.91, green: 0.92, blue: 0.94, alpha: isActive ? 1 : 0.82),
-                .font: NSFont.systemFont(ofSize: 11.5, weight: isActive ? .semibold : .regular),
+                .font: font,
+                .foregroundColor: titleColor,
             ]
         )
         backgroundLayer.fillColor = NSColor(
-            srgbRed: isActive ? 0.215 : 0.125,
-            green: isActive ? 0.224 : 0.129,
-            blue: isActive ? 0.243 : 0.141,
-            alpha: isActive ? 0.98 : 0.90
+            srgbRed: isActive ? 0.235 : 0.161,
+            green: isActive ? 0.251 : 0.165,
+            blue: isActive ? 0.278 : 0.176,
+            alpha: 1
         ).cgColor
         outlineLayer.strokeColor = NSColor(
-            srgbRed: 0.235,
-            green: 0.251,
-            blue: 0.278,
-            alpha: isActive ? 0.98 : 0.72
+            srgbRed: isActive ? 0.37 : 0.30,
+            green: isActive ? 0.40 : 0.32,
+            blue: isActive ? 0.45 : 0.35,
+            alpha: 1
         ).cgColor
         selectionLayer.isHidden = !isActive
         needsDisplay = true
@@ -274,18 +295,75 @@ final class ChromeTabButtonView: NSButton {
 
     override func layout() {
         super.layout()
-        let path = CGPath(
-            roundedRect: bounds.insetBy(dx: 0.4, dy: 0.4),
-            cornerWidth: 5,
-            cornerHeight: 5,
-            transform: nil
-        )
+        let path = chromeTabPath(in: bounds.insetBy(dx: 0.4, dy: 0.4))
         backgroundLayer.frame = bounds
         backgroundLayer.path = path
         outlineLayer.frame = bounds
         outlineLayer.path = path
         selectionLayer.frame = NSRect(x: 6, y: bounds.height - 2.4, width: max(0, bounds.width - 12), height: 1.8)
         selectionLayer.cornerRadius = 0.9
+        chromeMarkLayer.frame = NSRect(x: 11, y: 9, width: 12, height: 12)
+        titleLayer.frame = NSRect(x: 29, y: 8.2, width: max(0, bounds.width - 38), height: 14)
+    }
+
+    private func chromeTabPath(in rect: NSRect) -> CGPath {
+        let topRadius: CGFloat = 7
+        let bottomRadius: CGFloat = 3
+        let path = CGMutablePath()
+        path.move(to: NSPoint(x: rect.minX + bottomRadius, y: rect.minY))
+        path.addLine(to: NSPoint(x: rect.maxX - bottomRadius, y: rect.minY))
+        path.addQuadCurve(to: NSPoint(x: rect.maxX, y: rect.minY + bottomRadius), control: NSPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: NSPoint(x: rect.maxX, y: rect.maxY - topRadius))
+        path.addQuadCurve(to: NSPoint(x: rect.maxX - topRadius, y: rect.maxY), control: NSPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: NSPoint(x: rect.minX + topRadius, y: rect.maxY))
+        path.addQuadCurve(to: NSPoint(x: rect.minX, y: rect.maxY - topRadius), control: NSPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: NSPoint(x: rect.minX, y: rect.minY + bottomRadius))
+        path.addQuadCurve(to: NSPoint(x: rect.minX + bottomRadius, y: rect.minY), control: NSPoint(x: rect.minX, y: rect.minY))
+        path.closeSubpath()
+        return path
+    }
+
+    private func configureChromeMark() {
+        let layers = [chromeRedLayer, chromeYellowLayer, chromeGreenLayer]
+        let colors = [
+            NSColor(srgbRed: 0.92, green: 0.27, blue: 0.23, alpha: 1).cgColor,
+            NSColor(srgbRed: 0.98, green: 0.73, blue: 0.16, alpha: 1).cgColor,
+            NSColor(srgbRed: 0.20, green: 0.66, blue: 0.33, alpha: 1).cgColor,
+        ]
+        for (layer, color) in zip(layers, colors) {
+            layer.fillColor = color
+            chromeMarkLayer.addSublayer(layer)
+        }
+        chromeBlueLayer.fillColor = NSColor(srgbRed: 0.26, green: 0.52, blue: 0.96, alpha: 1).cgColor
+        chromeMarkLayer.addSublayer(chromeBlueLayer)
+    }
+
+    private func updateChromeMarkPaths() {
+        let center = CGPoint(x: 6, y: 6)
+        let radius: CGFloat = 6
+        let angleSets: [(CGFloat, CGFloat)] = [
+            (-CGFloat.pi / 2, CGFloat.pi / 6),
+            (CGFloat.pi / 6, 5 * CGFloat.pi / 6),
+            (5 * CGFloat.pi / 6, 3 * CGFloat.pi / 2),
+        ]
+        for (layer, angles) in zip([chromeRedLayer, chromeYellowLayer, chromeGreenLayer], angleSets) {
+            let path = CGMutablePath()
+            path.move(to: center)
+            path.addArc(center: center, radius: radius, startAngle: angles.0, endAngle: angles.1, clockwise: false)
+            path.closeSubpath()
+            layer.path = path
+        }
+        chromeBlueLayer.path = CGPath(ellipseIn: NSRect(x: 3.25, y: 3.25, width: 5.5, height: 5.5), transform: nil)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        titleLayer.contentsScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        updateChromeMarkPaths()
     }
 }
 

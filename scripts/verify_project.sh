@@ -74,4 +74,16 @@ if ! grep -q 'chromeSelectionInFlight' \
   exit 1
 fi
 
+if ! grep -q 'private let titleLayer = CATextLayer()' \
+  Sources/CodexTouchBar/GlassBlockView.swift; then
+  print -u2 "Chrome tab titles do not have a dedicated visible text layer"
+  exit 1
+fi
+
+if ! grep -q 'titleLayer.string = NSAttributedString' \
+  Sources/CodexTouchBar/GlassBlockView.swift; then
+  print -u2 "Chrome tab titles are not rendered with an explicit light text color"
+  exit 1
+fi
+
 print "CodexTouchBar verification passed"

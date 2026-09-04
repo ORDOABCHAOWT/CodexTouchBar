@@ -45,6 +45,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.terminate(nil)
             }
         }
+        if let snapshotPath = argumentValue(after: "--chrome-design-snapshot") {
+            let preview = ensurePreviewController()
+            preview.updateChromeTabs(Self.chromeDesignSamples)
+            preview.show()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                guard let self else { return }
+                try? self.previewController?.renderPNG(to: URL(fileURLWithPath: snapshotPath))
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -160,6 +170,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard next < CommandLine.arguments.endIndex else { return nil }
         return CommandLine.arguments[next]
     }
+
+    private static let chromeDesignSamples = [
+        ChromeTabSnapshot(title: "项目概览", windowID: 1, tabID: 1, isActive: false),
+        ChromeTabSnapshot(title: "Chrome 设计规范", windowID: 1, tabID: 2, isActive: true),
+        ChromeTabSnapshot(title: "新标签页", windowID: 1, tabID: 3, isActive: false),
+    ]
 
     @objc private func quit() {
         NSApp.terminate(nil)
