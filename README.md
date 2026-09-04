@@ -12,8 +12,9 @@ A lightweight native macOS companion that shows active Codex tasks, quota window
 - Actual previous, play/pause, and next-track controls grouped together on the left, without Accessibility or Input Monitoring permission.
 - Native AppKit button hit-testing and press feedback for every interactive control; the first physical touch sends the action and status blocks fill the available Touch Bar region proportionally.
 - The private modal bar is shown while Codex or Google Chrome is frontmost and is dismissed when another app becomes active, restoring the system Touch Bar.
-- When Google Chrome is frontmost, the whole bar becomes a dedicated browser-tab strip with no playback controls. Its neutral tab shape and blue active-tab indicator are intentionally distinct from Codex's colored glass blocks.
+- When Google Chrome is frontmost, the whole bar becomes a dedicated dark Chrome-style tab strip with graphite tab surfaces and Chrome blue active-tab indicator; playback controls are hidden.
 - Chrome buttons bind to Chrome's stable tab identifier, then resolve the tab's current position at touch time. Closing, inserting, or reordering tabs therefore cannot leave a button pointing at a stale index.
+- Chrome Automation is serialized off the Touch Bar UI thread. While a selected tab is being acknowledged, repeat taps are not queued; a completed switch refreshes the strip with only the post-switch state.
 - Switching between Codex and Chrome automatically swaps the Touch Bar content; switching to any other app restores the system Touch Bar.
 - A built-in on-screen preview that uses the exact same views as the physical Touch Bar.
 - No prompt or transcript collection. No third-party runtime dependencies.

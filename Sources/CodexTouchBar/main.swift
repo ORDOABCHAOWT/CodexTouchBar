@@ -54,6 +54,16 @@ if CommandLine.arguments.contains("--chrome-tab-switch-probe") {
     exit(success ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
+if CommandLine.arguments.contains("--chrome-tab-stress-probe") {
+    guard let result = ChromeTabController.stressProbe(cycles: 24) else {
+        print("unavailable")
+        exit(EXIT_FAILURE)
+    }
+    let success = result.checkedSwitches == 24 && result.restored
+    print("tabs=\(result.tabCount) switches=\(result.checkedSwitches)/24 restore=\(result.restored ? "matched" : "failed")")
+    exit(success ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
 if CommandLine.arguments.contains("--activity-probe") {
     let rows = CTBReadRecentCodexActivity(120)
     let titledRows = rows.filter { row in

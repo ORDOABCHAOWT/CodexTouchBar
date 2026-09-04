@@ -194,9 +194,8 @@ final class MediaButtonView: NSButton {
     required init?(coder: NSCoder) { nil }
 }
 
-/// A browser-tab control with its own visual language. Unlike Codex's glass
-/// status blocks it has no colored dot or tinted fill: the selected tab uses a
-/// slim blue top indicator, while inactive tabs recede into a neutral strip.
+/// A dark Chrome-inspired tab: neutral graphite surfaces with Chrome's blue
+/// active indicator, deliberately separate from Codex's colorful glass blocks.
 final class ChromeTabButtonView: NSButton {
     var onTap: (() -> Void)? {
         didSet {
@@ -224,10 +223,10 @@ final class ChromeTabButtonView: NSButton {
         cell?.alignment = .center
         sendAction(on: [.leftMouseDown])
 
-        backgroundLayer.fillColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        backgroundLayer.fillColor = NSColor(srgbRed: 0.125, green: 0.129, blue: 0.141, alpha: 0.96).cgColor
         outlineLayer.fillColor = NSColor.clear.cgColor
         outlineLayer.lineWidth = 0.75
-        selectionLayer.backgroundColor = NSColor.systemBlue.cgColor
+        selectionLayer.backgroundColor = NSColor(srgbRed: 0.54, green: 0.71, blue: 0.98, alpha: 1).cgColor
         selectionLayer.isHidden = true
         layer?.addSublayer(backgroundLayer)
         layer?.addSublayer(outlineLayer)
@@ -248,12 +247,22 @@ final class ChromeTabButtonView: NSButton {
         attributedTitle = NSAttributedString(
             string: title,
             attributes: [
-                .foregroundColor: NSColor.white.withAlphaComponent(isActive ? 1 : 0.82),
+                .foregroundColor: NSColor(srgbRed: 0.91, green: 0.92, blue: 0.94, alpha: isActive ? 1 : 0.82),
                 .font: NSFont.systemFont(ofSize: 11.5, weight: isActive ? .semibold : .regular),
             ]
         )
-        backgroundLayer.fillColor = NSColor.white.withAlphaComponent(isActive ? 0.20 : 0.075).cgColor
-        outlineLayer.strokeColor = NSColor.white.withAlphaComponent(isActive ? 0.48 : 0.18).cgColor
+        backgroundLayer.fillColor = NSColor(
+            srgbRed: isActive ? 0.215 : 0.125,
+            green: isActive ? 0.224 : 0.129,
+            blue: isActive ? 0.243 : 0.141,
+            alpha: isActive ? 0.98 : 0.90
+        ).cgColor
+        outlineLayer.strokeColor = NSColor(
+            srgbRed: 0.235,
+            green: 0.251,
+            blue: 0.278,
+            alpha: isActive ? 0.98 : 0.72
+        ).cgColor
         selectionLayer.isHidden = !isActive
         needsDisplay = true
     }
@@ -298,9 +307,11 @@ final class DashboardStripView: NSView {
     private var chromeTabs: [ChromeTabSnapshot] = []
     private var chromeStatusText: String?
     private var isChromeMode = false
+    private var chromeTabInteractionEnabled = true
     var onChromeTabSelected: ((Int64, Int64) -> Void)?
 
     func updateChromeTabs(_ tabs: [ChromeTabSnapshot], statusText: String? = nil) {
+        let contentChanged = !isChromeMode || chromeTabs != tabs || chromeStatusText != statusText
         isChromeMode = true
         chromeTabs = tabs
         chromeStatusText = statusText
@@ -308,7 +319,15 @@ final class DashboardStripView: NSView {
         mediaGroupWidthConstraint?.isActive = false
         quotaStack.isHidden = true
         quotaWidthConstraint?.isActive = false
-        rebuild()
+        if contentChanged { rebuild() }
+    }
+
+    func setChromeTabInteractionEnabled(_ enabled: Bool) {
+        chromeTabInteractionEnabled = enabled
+        chromeTabBlocks.forEach {
+            $0.isEnabled = enabled
+            $0.alphaValue = enabled ? 1 : 0.72
+        }
     }
     func showCodex() {
         guard isChromeMode else { return }
@@ -386,7 +405,10 @@ final class DashboardStripView: NSView {
             preferredQuotaWidth,
             heightAnchor.constraint(equalToConstant: 30),
         ])
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.rebuild() }
+        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, !self.isChromeMode else { return }
+            self.rebuild()
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -444,12 +466,14 @@ final class DashboardStripView: NSView {
                     block.onTap = { [weak self] in
                         self?.onChromeTabSelected?(tab.windowID, tab.tabID)
                     }
+                    block.isEnabled = chromeTabInteractionEnabled
                     chromeTabBlocks.append(block)
                     taskStack.addArrangedSubview(block)
                 }
                 if chromeTabs.isEmpty {
-                    let block = GlassBlockView()
-                    block.set(text: chromeStatusText ?? "Chrome · 无标签页", accent: .gray)
+                    let block = ChromeTabButtonView()
+                    block.isEnabled = false
+                    block.set(title: chromeStatusText ?? "Chrome · 无标签页", isActive: false)
                     taskStack.addArrangedSubview(block)
                 }
                 statusLayoutKey = layoutKey

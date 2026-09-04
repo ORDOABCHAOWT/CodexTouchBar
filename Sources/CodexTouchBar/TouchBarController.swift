@@ -14,6 +14,9 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     private let codexBundleIdentifiers: Set<String> = ["com.openai.codex", "com.openai.chatgpt"]
     private let chromeBundleIdentifier = "com.google.Chrome"
     private var chromeRefreshTimer: Timer?
+    private var chromeRefreshInFlight = false
+    private var chromeSelectionInFlight = false
+    private var chromeRequestGeneration: UInt64 = 0
 
     private(set) var privateAPIAvailable = false
 
@@ -23,8 +26,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
             _ = ThreadNavigator.open(sessionID: sessionID)
         }
         dashboardView.onChromeTabSelected = { [weak self] windowID, tabID in
-            _ = ChromeTabController.activate(windowID: windowID, tabID: tabID)
-            self?.refreshChromeTabs()
+            self?.activateChromeTab(windowID: windowID, tabID: tabID)
         }
         touchBar.delegate = self
         touchBar.defaultItemIdentifiers = [dashboardIdentifier]
@@ -96,9 +98,10 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
             present()
         } else if isChromeFrontmost {
             refreshChromeTabs()
-            chromeRefreshTimer?.invalidate()
-            chromeRefreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.refreshChromeTabs() }
+            if chromeRefreshTimer == nil {
+                chromeRefreshTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+                    Task { @MainActor [weak self] in self?.refreshChromeTabs() }
+                }
             }
             CTBSetControlStripPresence(trayIdentifier.rawValue, true)
             _ = CTBPresentSystemModalTouchBar(touchBar, trayIdentifier.rawValue)
@@ -110,12 +113,45 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     }
 
     private func refreshChromeTabs() {
-        guard isChromeFrontmost else { return }
-        guard let tabs = ChromeTabController.frontWindowTabs() else {
-            dashboardView.updateChromeTabs([], statusText: "Chrome · 请允许自动化控制")
-            return
+        guard isChromeFrontmost, !chromeSelectionInFlight, !chromeRefreshInFlight else { return }
+        chromeRefreshInFlight = true
+        let generation = nextChromeRequestGeneration()
+        ChromeTabController.refreshAsync { [weak self] tabs in
+            guard let self else { return }
+            self.chromeRefreshInFlight = false
+            guard self.isChromeFrontmost, generation == self.chromeRequestGeneration else { return }
+            guard let tabs else {
+                self.dashboardView.updateChromeTabs([], statusText: "Chrome · 请允许自动化控制")
+                return
+            }
+            self.dashboardView.updateChromeTabs(tabs)
         }
-        dashboardView.updateChromeTabs(tabs)
+    }
+
+    private func activateChromeTab(windowID: Int64, tabID: Int64) {
+        // Ignore rapid repeat presses while one exact tab selection is still
+        // being acknowledged by Chrome. This prevents an old press from being
+        // queued behind a newer one and opening the wrong page later.
+        guard isChromeFrontmost, !chromeSelectionInFlight else { return }
+        chromeSelectionInFlight = true
+        dashboardView.setChromeTabInteractionEnabled(false)
+        let generation = nextChromeRequestGeneration()
+        ChromeTabController.activateAsync(windowID: windowID, tabID: tabID) { [weak self] didActivate, tabs in
+            guard let self else { return }
+            self.chromeSelectionInFlight = false
+            self.dashboardView.setChromeTabInteractionEnabled(true)
+            guard self.isChromeFrontmost, generation == self.chromeRequestGeneration else { return }
+            if didActivate, let tabs {
+                self.dashboardView.updateChromeTabs(tabs)
+            } else {
+                self.refreshChromeTabs()
+            }
+        }
+    }
+
+    private func nextChromeRequestGeneration() -> UInt64 {
+        chromeRequestGeneration &+= 1
+        return chromeRequestGeneration
     }
 
     func touchBar(_ touchBar: NSTouchBar, makeItemForIdentifier identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {

@@ -56,4 +56,22 @@ if ! grep -q 'leftMediaStack.isHidden = true' \
   exit 1
 fi
 
+if ! grep -q 'private static let automationQueue' \
+  Sources/CodexTouchBar/ChromeTabController.swift; then
+  print -u2 "Chrome Automation is running on the Touch Bar UI path"
+  exit 1
+fi
+
+if grep -q 'ChromeTabController.frontWindowTabs' \
+  Sources/CodexTouchBar/TouchBarController.swift; then
+  print -u2 "Touch Bar controller performs synchronous Chrome Automation"
+  exit 1
+fi
+
+if ! grep -q 'chromeSelectionInFlight' \
+  Sources/CodexTouchBar/TouchBarController.swift; then
+  print -u2 "Rapid Chrome touches are not protected from stale queued actions"
+  exit 1
+fi
+
 print "CodexTouchBar verification passed"
