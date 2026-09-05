@@ -74,6 +74,24 @@ if ! grep -q 'chromeSelectionInFlight' \
   exit 1
 fi
 
+if ! grep -q 'pendingChromeSelection' \
+  Sources/CodexTouchBar/TouchBarController.swift; then
+  print -u2 "Rapid Chrome touches can still be silently dropped"
+  exit 1
+fi
+
+if grep -q 'setChromeTabInteractionEnabled(false)' \
+  Sources/CodexTouchBar/TouchBarController.swift; then
+  print -u2 "Chrome buttons are disabled while a selection is in flight, so taps cannot be coalesced"
+  exit 1
+fi
+
+if ! grep -q 'activeChromeSelection' \
+  Sources/CodexTouchBar/TouchBarController.swift; then
+  print -u2 "Repeated touches on the already in-flight Chrome tab are not deduplicated"
+  exit 1
+fi
+
 if ! grep -q 'private let titleLabel = NSTextField(labelWithString: "")' \
   Sources/CodexTouchBar/GlassBlockView.swift; then
   print -u2 "Chrome tab titles do not use a physical-Touch-Bar-safe AppKit text field"

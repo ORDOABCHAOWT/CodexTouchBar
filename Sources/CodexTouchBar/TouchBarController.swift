@@ -16,6 +16,11 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     private var chromeRefreshTimer: Timer?
     private var chromeRefreshInFlight = false
     private var chromeSelectionInFlight = false
+    // Touch Bar presses can arrive while Chrome is acknowledging the previous
+    // Apple Event. Keep the newest press instead of silently dropping it;
+    // dropping the first press is what made users need a second tap.
+    private var pendingChromeSelection: (windowID: Int64, tabID: Int64)?
+    private var activeChromeSelection: (windowID: Int64, tabID: Int64)?
     private var chromeRequestGeneration: UInt64 = 0
 
     private(set) var privateAPIAvailable = false
@@ -94,6 +99,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         guard privateAPIAvailable, isInstalled else { return }
         if isCodexFrontmost {
             chromeRefreshTimer?.invalidate(); chromeRefreshTimer = nil
+            pendingChromeSelection = nil
             dashboardView.showCodex()
             present()
         } else if isChromeFrontmost {
@@ -107,6 +113,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
             _ = CTBPresentSystemModalTouchBar(touchBar, trayIdentifier.rawValue)
         } else {
             chromeRefreshTimer?.invalidate(); chromeRefreshTimer = nil
+            pendingChromeSelection = nil
             CTBDismissSystemModalTouchBar(touchBar)
             CTBSetControlStripPresence(trayIdentifier.rawValue, false)
         }
@@ -129,22 +136,43 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     }
 
     private func activateChromeTab(windowID: Int64, tabID: Int64) {
-        // Ignore rapid repeat presses while one exact tab selection is still
-        // being acknowledged by Chrome. This prevents an old press from being
-        // queued behind a newer one and opening the wrong page later.
+        guard isChromeFrontmost else { return }
+        if chromeSelectionInFlight {
+            if let active = activeChromeSelection,
+               active.windowID == windowID,
+               active.tabID == tabID {
+                return
+            }
+            // Coalesce rapid presses to the last tab the user touched. This
+            // preserves first-tap intent without queuing stale tab changes.
+            pendingChromeSelection = (windowID, tabID)
+            return
+        }
+        startChromeTabActivation(windowID: windowID, tabID: tabID)
+    }
+
+    private func startChromeTabActivation(windowID: Int64, tabID: Int64) {
         guard isChromeFrontmost, !chromeSelectionInFlight else { return }
         chromeSelectionInFlight = true
-        dashboardView.setChromeTabInteractionEnabled(false)
+        activeChromeSelection = (windowID, tabID)
         let generation = nextChromeRequestGeneration()
         ChromeTabController.activateAsync(windowID: windowID, tabID: tabID) { [weak self] didActivate, tabs in
             guard let self else { return }
             self.chromeSelectionInFlight = false
-            self.dashboardView.setChromeTabInteractionEnabled(true)
-            guard self.isChromeFrontmost, generation == self.chromeRequestGeneration else { return }
+            self.activeChromeSelection = nil
+            guard self.isChromeFrontmost else {
+                self.pendingChromeSelection = nil
+                return
+            }
+            guard generation == self.chromeRequestGeneration else { return }
             if didActivate, let tabs {
                 self.dashboardView.updateChromeTabs(tabs)
             } else {
                 self.refreshChromeTabs()
+            }
+            if let pending = self.pendingChromeSelection {
+                self.pendingChromeSelection = nil
+                self.startChromeTabActivation(windowID: pending.windowID, tabID: pending.tabID)
             }
         }
     }

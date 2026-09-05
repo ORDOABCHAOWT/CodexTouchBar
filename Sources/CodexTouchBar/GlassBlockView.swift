@@ -383,7 +383,6 @@ final class DashboardStripView: NSView {
     private var chromeTabs: [ChromeTabSnapshot] = []
     private var chromeStatusText: String?
     private var isChromeMode = false
-    private var chromeTabInteractionEnabled = true
     var onChromeTabSelected: ((Int64, Int64) -> Void)?
 
     func updateChromeTabs(_ tabs: [ChromeTabSnapshot], statusText: String? = nil) {
@@ -398,13 +397,6 @@ final class DashboardStripView: NSView {
         if contentChanged { rebuild() }
     }
 
-    func setChromeTabInteractionEnabled(_ enabled: Bool) {
-        chromeTabInteractionEnabled = enabled
-        chromeTabBlocks.forEach {
-            $0.isEnabled = enabled
-            $0.alphaValue = enabled ? 1 : 0.72
-        }
-    }
     func showCodex() {
         guard isChromeMode else { return }
         isChromeMode = false
@@ -542,7 +534,6 @@ final class DashboardStripView: NSView {
                     block.onTap = { [weak self] in
                         self?.onChromeTabSelected?(tab.windowID, tab.tabID)
                     }
-                    block.isEnabled = chromeTabInteractionEnabled
                     chromeTabBlocks.append(block)
                     taskStack.addArrangedSubview(block)
                 }
