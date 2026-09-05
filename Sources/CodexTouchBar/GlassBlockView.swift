@@ -194,8 +194,48 @@ final class MediaButtonView: NSButton {
     required init?(coder: NSCoder) { nil }
 }
 
-/// A dark Chrome-inspired tab: neutral graphite surfaces with Chrome's blue
-/// active indicator, deliberately separate from Codex's colorful glass blocks.
+private enum ChromeTabTheme {
+    private static let fallbackPalette: [NSColor] = [
+        NSColor(srgbRed: 0.26, green: 0.52, blue: 0.96, alpha: 1),
+        NSColor(srgbRed: 0.91, green: 0.29, blue: 0.24, alpha: 1),
+        NSColor(srgbRed: 0.18, green: 0.69, blue: 0.42, alpha: 1),
+        NSColor(srgbRed: 0.63, green: 0.40, blue: 0.92, alpha: 1),
+        NSColor(srgbRed: 0.96, green: 0.62, blue: 0.18, alpha: 1),
+        NSColor(srgbRed: 0.14, green: 0.67, blue: 0.75, alpha: 1),
+        NSColor(srgbRed: 0.91, green: 0.36, blue: 0.59, alpha: 1),
+    ]
+
+    /// Uses only the already-visible title. No URL, favicon or page content is
+    /// read, and the result is never persisted.
+    static func accent(for title: String) -> NSColor {
+        let normalized = title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let known: [(tokens: [String], color: NSColor)] = [
+            (["youtube"], NSColor(srgbRed: 1.00, green: 0.19, blue: 0.16, alpha: 1)),
+            (["github"], NSColor(srgbRed: 0.60, green: 0.46, blue: 0.82, alpha: 1)),
+            (["google", "谷歌"], NSColor(srgbRed: 0.26, green: 0.52, blue: 0.96, alpha: 1)),
+            (["gmail"], NSColor(srgbRed: 0.92, green: 0.27, blue: 0.23, alpha: 1)),
+            (["notion"], NSColor(srgbRed: 0.72, green: 0.73, blue: 0.76, alpha: 1)),
+            (["figma"], NSColor(srgbRed: 0.72, green: 0.42, blue: 0.96, alpha: 1)),
+            (["openai", "chatgpt"], NSColor(srgbRed: 0.22, green: 0.72, blue: 0.58, alpha: 1)),
+            (["apple", "icloud"], NSColor(srgbRed: 0.68, green: 0.72, blue: 0.78, alpha: 1)),
+            (["bilibili", "哔哩哔哩"], NSColor(srgbRed: 0.22, green: 0.69, blue: 0.88, alpha: 1)),
+            (["知乎", "zhihu"], NSColor(srgbRed: 0.16, green: 0.49, blue: 0.96, alpha: 1)),
+            (["微博", "weibo"], NSColor(srgbRed: 0.95, green: 0.42, blue: 0.19, alpha: 1)),
+        ]
+        if let match = known.first(where: { entry in entry.tokens.contains(where: normalized.contains) }) {
+            return match.color
+        }
+
+        // FNV-1a is stable across launches, unlike Swift's randomized Hasher.
+        let hash = normalized.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { partial, byte in
+            (partial ^ UInt64(byte)) &* 1_099_511_628_211
+        }
+        return fallbackPalette[Int(hash % UInt64(fallbackPalette.count))]
+    }
+}
+
+/// A compact Chrome-inspired tab. An AppKit text field is used because a
+/// CATextLayer can disappear on the physical Touch Bar when the tab is narrow.
 final class ChromeTabButtonView: NSButton {
     var onTap: (() -> Void)? {
         didSet {
@@ -207,13 +247,10 @@ final class ChromeTabButtonView: NSButton {
 
     private let backgroundLayer = CAShapeLayer()
     private let outlineLayer = CAShapeLayer()
-    private let selectionLayer = CALayer()
-    private let titleLayer = CATextLayer()
-    private let chromeMarkLayer = CALayer()
-    private let chromeRedLayer = CAShapeLayer()
-    private let chromeYellowLayer = CAShapeLayer()
-    private let chromeGreenLayer = CAShapeLayer()
-    private let chromeBlueLayer = CAShapeLayer()
+    private let accentLayer = CALayer()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private var fullTitle = ""
+    private var active = false
 
     init() {
         super.init(frame: .zero)
@@ -233,18 +270,20 @@ final class ChromeTabButtonView: NSButton {
         backgroundLayer.fillColor = NSColor(srgbRed: 0.125, green: 0.129, blue: 0.141, alpha: 0.96).cgColor
         outlineLayer.fillColor = NSColor.clear.cgColor
         outlineLayer.lineWidth = 0.75
-        selectionLayer.backgroundColor = NSColor(srgbRed: 0.54, green: 0.71, blue: 0.98, alpha: 1).cgColor
-        selectionLayer.isHidden = true
-        titleLayer.alignmentMode = .left
-        titleLayer.truncationMode = .end
-        titleLayer.isWrapped = false
-        titleLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
-        configureChromeMark()
         layer?.addSublayer(backgroundLayer)
         layer?.addSublayer(outlineLayer)
-        layer?.addSublayer(selectionLayer)
-        layer?.addSublayer(chromeMarkLayer)
-        layer?.addSublayer(titleLayer)
+        layer?.addSublayer(accentLayer)
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = true
+        titleLabel.alignment = .center
+        titleLabel.lineBreakMode = .byClipping
+        titleLabel.maximumNumberOfLines = 1
+        titleLabel.textColor = NSColor(srgbRed: 0.95, green: 0.96, blue: 0.98, alpha: 1)
+        titleLabel.backgroundColor = .clear
+        titleLabel.drawsBackground = false
+        titleLabel.isSelectable = false
+        titleLabel.isEditable = false
+        addSubview(titleLabel)
 
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -256,35 +295,25 @@ final class ChromeTabButtonView: NSButton {
     @objc private func handleTap() { onTap?() }
 
     func set(title: String, isActive: Bool) {
+        fullTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "新标签" : title
+        active = isActive
         toolTip = title
         setAccessibilityLabel(title)
-        let font = NSFont.systemFont(ofSize: 11.5, weight: isActive ? .semibold : .regular)
-        let titleColor = NSColor(
-            srgbRed: 0.91,
-            green: 0.92,
-            blue: 0.94,
-            alpha: isActive ? 1 : 0.82
-        )
-        titleLayer.string = NSAttributedString(
-            string: title,
-            attributes: [
-                .font: font,
-                .foregroundColor: titleColor,
-            ]
-        )
-        backgroundLayer.fillColor = NSColor(
+        let accent = ChromeTabTheme.accent(for: fullTitle)
+        let neutral = NSColor(
             srgbRed: isActive ? 0.235 : 0.161,
             green: isActive ? 0.251 : 0.165,
             blue: isActive ? 0.278 : 0.176,
             alpha: 1
-        ).cgColor
-        outlineLayer.strokeColor = NSColor(
-            srgbRed: isActive ? 0.37 : 0.30,
-            green: isActive ? 0.40 : 0.32,
-            blue: isActive ? 0.45 : 0.35,
-            alpha: 1
-        ).cgColor
-        selectionLayer.isHidden = !isActive
+        )
+        backgroundLayer.fillColor = neutral.blended(
+            withFraction: isActive ? 0.22 : 0.10,
+            of: accent
+        )?.cgColor ?? neutral.cgColor
+        outlineLayer.strokeColor = accent.withAlphaComponent(isActive ? 0.82 : 0.42).cgColor
+        accentLayer.backgroundColor = accent.cgColor
+        accentLayer.opacity = isActive ? 1 : 0.72
+        updateVisibleTitle()
         needsDisplay = true
     }
 
@@ -300,10 +329,13 @@ final class ChromeTabButtonView: NSButton {
         backgroundLayer.path = path
         outlineLayer.frame = bounds
         outlineLayer.path = path
-        selectionLayer.frame = NSRect(x: 6, y: bounds.height - 2.4, width: max(0, bounds.width - 12), height: 1.8)
-        selectionLayer.cornerRadius = 0.9
-        chromeMarkLayer.frame = NSRect(x: 11, y: 9, width: 12, height: 12)
-        titleLayer.frame = NSRect(x: 29, y: 8.2, width: max(0, bounds.width - 38), height: 14)
+        let narrow = bounds.width < 48
+        let inset: CGFloat = narrow ? 3 : 6
+        accentLayer.frame = NSRect(x: inset, y: bounds.height - (active ? 2.6 : 2.0), width: max(0, bounds.width - inset * 2), height: active ? 2.2 : 1.6)
+        accentLayer.cornerRadius = 0.8
+        titleLabel.font = NSFont.systemFont(ofSize: narrow ? 10.5 : 11.5, weight: active ? .semibold : .medium)
+        titleLabel.frame = NSRect(x: inset, y: 7, width: max(0, bounds.width - inset * 2), height: 16)
+        updateVisibleTitle()
     }
 
     private func chromeTabPath(in rect: NSRect) -> CGPath {
@@ -323,47 +355,13 @@ final class ChromeTabButtonView: NSButton {
         return path
     }
 
-    private func configureChromeMark() {
-        let layers = [chromeRedLayer, chromeYellowLayer, chromeGreenLayer]
-        let colors = [
-            NSColor(srgbRed: 0.92, green: 0.27, blue: 0.23, alpha: 1).cgColor,
-            NSColor(srgbRed: 0.98, green: 0.73, blue: 0.16, alpha: 1).cgColor,
-            NSColor(srgbRed: 0.20, green: 0.66, blue: 0.33, alpha: 1).cgColor,
-        ]
-        for (layer, color) in zip(layers, colors) {
-            layer.fillColor = color
-            chromeMarkLayer.addSublayer(layer)
-        }
-        chromeBlueLayer.fillColor = NSColor(srgbRed: 0.26, green: 0.52, blue: 0.96, alpha: 1).cgColor
-        chromeMarkLayer.addSublayer(chromeBlueLayer)
+    private func updateVisibleTitle() {
+        guard !fullTitle.isEmpty else { return }
+        titleLabel.stringValue = bounds.width < 48 ? String(fullTitle.prefix(2)) : fullTitle
     }
 
-    private func updateChromeMarkPaths() {
-        let center = CGPoint(x: 6, y: 6)
-        let radius: CGFloat = 6
-        let angleSets: [(CGFloat, CGFloat)] = [
-            (-CGFloat.pi / 2, CGFloat.pi / 6),
-            (CGFloat.pi / 6, 5 * CGFloat.pi / 6),
-            (5 * CGFloat.pi / 6, 3 * CGFloat.pi / 2),
-        ]
-        for (layer, angles) in zip([chromeRedLayer, chromeYellowLayer, chromeGreenLayer], angleSets) {
-            let path = CGMutablePath()
-            path.move(to: center)
-            path.addArc(center: center, radius: radius, startAngle: angles.0, endAngle: angles.1, clockwise: false)
-            path.closeSubpath()
-            layer.path = path
-        }
-        chromeBlueLayer.path = CGPath(ellipseIn: NSRect(x: 3.25, y: 3.25, width: 5.5, height: 5.5), transform: nil)
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        titleLayer.contentsScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-    }
-
-    override func viewDidMoveToSuperview() {
-        super.viewDidMoveToSuperview()
-        updateChromeMarkPaths()
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(convert(point, from: superview)) && isEnabled ? self : nil
     }
 }
 

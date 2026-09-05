@@ -172,9 +172,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static let chromeDesignSamples = [
-        ChromeTabSnapshot(title: "项目概览", windowID: 1, tabID: 1, isActive: false),
-        ChromeTabSnapshot(title: "Chrome 设计规范", windowID: 1, tabID: 2, isActive: true),
-        ChromeTabSnapshot(title: "新标签页", windowID: 1, tabID: 3, isActive: false),
+        ChromeTabSnapshot(title: "YouTube 音乐", windowID: 1, tabID: 1, isActive: false),
+        ChromeTabSnapshot(title: "GitHub 项目", windowID: 1, tabID: 2, isActive: false),
+        ChromeTabSnapshot(title: "Google 搜索", windowID: 1, tabID: 3, isActive: false),
+        ChromeTabSnapshot(title: "知乎问答", windowID: 1, tabID: 4, isActive: false),
+        ChromeTabSnapshot(title: "哔哩哔哩", windowID: 1, tabID: 5, isActive: false),
+        ChromeTabSnapshot(title: "Notion 文档", windowID: 1, tabID: 6, isActive: false),
+        ChromeTabSnapshot(title: "Figma 设计", windowID: 1, tabID: 7, isActive: true),
+        ChromeTabSnapshot(title: "OpenAI", windowID: 1, tabID: 8, isActive: false),
+        ChromeTabSnapshot(title: "Apple", windowID: 1, tabID: 9, isActive: false),
+        ChromeTabSnapshot(title: "Gmail", windowID: 1, tabID: 10, isActive: false),
+        ChromeTabSnapshot(title: "微博热搜", windowID: 1, tabID: 11, isActive: false),
+        ChromeTabSnapshot(title: "日历安排", windowID: 1, tabID: 12, isActive: false),
+        ChromeTabSnapshot(title: "新闻阅读", windowID: 1, tabID: 13, isActive: false),
+        ChromeTabSnapshot(title: "工作资料", windowID: 1, tabID: 14, isActive: false),
+        ChromeTabSnapshot(title: "产品设计", windowID: 1, tabID: 15, isActive: false),
+        ChromeTabSnapshot(title: "项目进度", windowID: 1, tabID: 16, isActive: false),
+        ChromeTabSnapshot(title: "客户反馈", windowID: 1, tabID: 17, isActive: false),
+        ChromeTabSnapshot(title: "数据报表", windowID: 1, tabID: 18, isActive: false),
+        ChromeTabSnapshot(title: "旅行计划", windowID: 1, tabID: 19, isActive: false),
+        ChromeTabSnapshot(title: "阅读清单", windowID: 1, tabID: 20, isActive: false),
     ]
 
     @objc private func quit() {

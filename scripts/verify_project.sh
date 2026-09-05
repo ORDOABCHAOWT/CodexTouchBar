@@ -74,15 +74,27 @@ if ! grep -q 'chromeSelectionInFlight' \
   exit 1
 fi
 
-if ! grep -q 'private let titleLayer = CATextLayer()' \
+if ! grep -q 'private let titleLabel = NSTextField(labelWithString: "")' \
   Sources/CodexTouchBar/GlassBlockView.swift; then
-  print -u2 "Chrome tab titles do not have a dedicated visible text layer"
+  print -u2 "Chrome tab titles do not use a physical-Touch-Bar-safe AppKit text field"
   exit 1
 fi
 
-if ! grep -q 'titleLayer.string = NSAttributedString' \
+if ! grep -q 'String(fullTitle.prefix(2))' \
   Sources/CodexTouchBar/GlassBlockView.swift; then
-  print -u2 "Chrome tab titles are not rendered with an explicit light text color"
+  print -u2 "Narrow Chrome tabs do not preserve the first two title characters"
+  exit 1
+fi
+
+if grep -q 'chromeMarkLayer\|private let titleLayer = CATextLayer' \
+  Sources/CodexTouchBar/GlassBlockView.swift; then
+  print -u2 "Chrome tab logo or unstable CATextLayer still consumes title width"
+  exit 1
+fi
+
+if ! grep -q 'private enum ChromeTabTheme' \
+  Sources/CodexTouchBar/GlassBlockView.swift; then
+  print -u2 "Chrome tabs do not have title-derived in-memory theme accents"
   exit 1
 fi
 
