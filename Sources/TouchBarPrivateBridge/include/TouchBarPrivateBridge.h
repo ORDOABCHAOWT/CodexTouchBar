@@ -13,6 +13,7 @@ void CTBDismissSystemModalTouchBar(NSTouchBar *touchBar);
 /// Sends a command to the current system media player without synthesizing keyboard events.
 bool CTBMediaRemoteAvailable(void);
 bool CTBSendMediaCommand(NSInteger command);
+void CTBReadMediaPlaybackState(void (^completion)(bool known, bool playing));
 
 /// Returns recent Codex activity metadata only: id, display title source, workspace basename, time.
 NSArray<NSDictionary<NSString *, id> *> *CTBReadRecentCodexActivity(NSTimeInterval recentSeconds);

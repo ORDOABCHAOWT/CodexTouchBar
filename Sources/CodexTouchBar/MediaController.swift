@@ -14,4 +14,8 @@ enum MediaController {
     static func send(_ command: MediaCommand) -> Bool {
         CTBSendMediaCommand(command.rawValue)
     }
+
+    static func readPlaybackState(_ completion: @escaping (Bool, Bool) -> Void) {
+        CTBReadMediaPlaybackState(completion)
+    }
 }

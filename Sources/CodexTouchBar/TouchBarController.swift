@@ -18,7 +18,13 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     override init() {
         super.init()
         dashboardView.onTaskSelected = { sessionID in
-            _ = ThreadNavigator.open(sessionID: sessionID)
+            guard !ThreadNavigator.open(sessionID: sessionID) else { return }
+            // Launch Services can transiently reject the first URL open while
+            // Codex is changing windows. Retry only an explicit failure so a
+            // successful tap is never delivered twice.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                _ = ThreadNavigator.open(sessionID: sessionID)
+            }
         }
         touchBar.delegate = self
         touchBar.defaultItemIdentifiers = [dashboardIdentifier]
