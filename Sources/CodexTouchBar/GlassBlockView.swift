@@ -194,177 +194,6 @@ final class MediaButtonView: NSButton {
     required init?(coder: NSCoder) { nil }
 }
 
-private enum ChromeTabTheme {
-    private static let fallbackPalette: [NSColor] = [
-        NSColor(srgbRed: 0.26, green: 0.52, blue: 0.96, alpha: 1),
-        NSColor(srgbRed: 0.91, green: 0.29, blue: 0.24, alpha: 1),
-        NSColor(srgbRed: 0.18, green: 0.69, blue: 0.42, alpha: 1),
-        NSColor(srgbRed: 0.63, green: 0.40, blue: 0.92, alpha: 1),
-        NSColor(srgbRed: 0.96, green: 0.62, blue: 0.18, alpha: 1),
-        NSColor(srgbRed: 0.14, green: 0.67, blue: 0.75, alpha: 1),
-        NSColor(srgbRed: 0.91, green: 0.36, blue: 0.59, alpha: 1),
-    ]
-
-    /// Uses only the already-visible title. No URL, favicon or page content is
-    /// read, and the result is never persisted.
-    static func accent(for title: String) -> NSColor {
-        let normalized = title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let known: [(tokens: [String], color: NSColor)] = [
-            (["youtube"], NSColor(srgbRed: 1.00, green: 0.19, blue: 0.16, alpha: 1)),
-            (["github"], NSColor(srgbRed: 0.60, green: 0.46, blue: 0.82, alpha: 1)),
-            (["google", "谷歌"], NSColor(srgbRed: 0.26, green: 0.52, blue: 0.96, alpha: 1)),
-            (["gmail"], NSColor(srgbRed: 0.92, green: 0.27, blue: 0.23, alpha: 1)),
-            (["notion"], NSColor(srgbRed: 0.72, green: 0.73, blue: 0.76, alpha: 1)),
-            (["figma"], NSColor(srgbRed: 0.72, green: 0.42, blue: 0.96, alpha: 1)),
-            (["openai", "chatgpt"], NSColor(srgbRed: 0.22, green: 0.72, blue: 0.58, alpha: 1)),
-            (["apple", "icloud"], NSColor(srgbRed: 0.68, green: 0.72, blue: 0.78, alpha: 1)),
-            (["bilibili", "哔哩哔哩"], NSColor(srgbRed: 0.22, green: 0.69, blue: 0.88, alpha: 1)),
-            (["知乎", "zhihu"], NSColor(srgbRed: 0.16, green: 0.49, blue: 0.96, alpha: 1)),
-            (["微博", "weibo"], NSColor(srgbRed: 0.95, green: 0.42, blue: 0.19, alpha: 1)),
-        ]
-        if let match = known.first(where: { entry in entry.tokens.contains(where: normalized.contains) }) {
-            return match.color
-        }
-
-        // FNV-1a is stable across launches, unlike Swift's randomized Hasher.
-        let hash = normalized.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { partial, byte in
-            (partial ^ UInt64(byte)) &* 1_099_511_628_211
-        }
-        return fallbackPalette[Int(hash % UInt64(fallbackPalette.count))]
-    }
-}
-
-/// A compact Chrome-inspired tab. An AppKit text field is used because a
-/// CATextLayer can disappear on the physical Touch Bar when the tab is narrow.
-final class ChromeTabButtonView: NSButton {
-    var onTap: (() -> Void)? {
-        didSet {
-            target = self
-            action = #selector(handleTap)
-            setAccessibilityRole(.button)
-        }
-    }
-
-    private let backgroundLayer = CAShapeLayer()
-    private let outlineLayer = CAShapeLayer()
-    private let accentLayer = CALayer()
-    private let titleLabel = NSTextField(labelWithString: "")
-    private var fullTitle = ""
-    private var active = false
-
-    init() {
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
-        isBordered = false
-        focusRingType = .none
-        imagePosition = .noImage
-        cell?.usesSingleLineMode = true
-        cell?.wraps = false
-        cell?.lineBreakMode = .byTruncatingTail
-        cell?.truncatesLastVisibleLine = true
-        cell?.alignment = .center
-        title = ""
-        sendAction(on: [.leftMouseDown])
-
-        backgroundLayer.fillColor = NSColor(srgbRed: 0.125, green: 0.129, blue: 0.141, alpha: 0.96).cgColor
-        outlineLayer.fillColor = NSColor.clear.cgColor
-        outlineLayer.lineWidth = 0.75
-        layer?.addSublayer(backgroundLayer)
-        layer?.addSublayer(outlineLayer)
-        layer?.addSublayer(accentLayer)
-
-        titleLabel.translatesAutoresizingMaskIntoConstraints = true
-        titleLabel.alignment = .center
-        titleLabel.lineBreakMode = .byClipping
-        titleLabel.maximumNumberOfLines = 1
-        titleLabel.textColor = NSColor(srgbRed: 0.95, green: 0.96, blue: 0.98, alpha: 1)
-        titleLabel.backgroundColor = .clear
-        titleLabel.drawsBackground = false
-        titleLabel.isSelectable = false
-        titleLabel.isEditable = false
-        addSubview(titleLabel)
-
-        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        setContentHuggingPriority(.defaultLow, for: .horizontal)
-        NSLayoutConstraint.activate([heightAnchor.constraint(equalToConstant: 30)])
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    @objc private func handleTap() { onTap?() }
-
-    func set(title: String, isActive: Bool) {
-        fullTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "新标签" : title
-        active = isActive
-        toolTip = title
-        setAccessibilityLabel(title)
-        let accent = ChromeTabTheme.accent(for: fullTitle)
-        let neutral = NSColor(
-            srgbRed: isActive ? 0.235 : 0.161,
-            green: isActive ? 0.251 : 0.165,
-            blue: isActive ? 0.278 : 0.176,
-            alpha: 1
-        )
-        backgroundLayer.fillColor = neutral.blended(
-            withFraction: isActive ? 0.22 : 0.10,
-            of: accent
-        )?.cgColor ?? neutral.cgColor
-        outlineLayer.strokeColor = accent.withAlphaComponent(isActive ? 0.82 : 0.42).cgColor
-        accentLayer.backgroundColor = accent.cgColor
-        accentLayer.opacity = isActive ? 1 : 0.72
-        updateVisibleTitle()
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        backgroundLayer.opacity = isHighlighted ? 0.58 : 1
-    }
-
-    override func layout() {
-        super.layout()
-        let path = chromeTabPath(in: bounds.insetBy(dx: 0.4, dy: 0.4))
-        backgroundLayer.frame = bounds
-        backgroundLayer.path = path
-        outlineLayer.frame = bounds
-        outlineLayer.path = path
-        let narrow = bounds.width < 48
-        let inset: CGFloat = narrow ? 3 : 6
-        accentLayer.frame = NSRect(x: inset, y: bounds.height - (active ? 2.6 : 2.0), width: max(0, bounds.width - inset * 2), height: active ? 2.2 : 1.6)
-        accentLayer.cornerRadius = 0.8
-        titleLabel.font = NSFont.systemFont(ofSize: narrow ? 10.5 : 11.5, weight: active ? .semibold : .medium)
-        titleLabel.frame = NSRect(x: inset, y: 7, width: max(0, bounds.width - inset * 2), height: 16)
-        updateVisibleTitle()
-    }
-
-    private func chromeTabPath(in rect: NSRect) -> CGPath {
-        let topRadius: CGFloat = 7
-        let bottomRadius: CGFloat = 3
-        let path = CGMutablePath()
-        path.move(to: NSPoint(x: rect.minX + bottomRadius, y: rect.minY))
-        path.addLine(to: NSPoint(x: rect.maxX - bottomRadius, y: rect.minY))
-        path.addQuadCurve(to: NSPoint(x: rect.maxX, y: rect.minY + bottomRadius), control: NSPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: NSPoint(x: rect.maxX, y: rect.maxY - topRadius))
-        path.addQuadCurve(to: NSPoint(x: rect.maxX - topRadius, y: rect.maxY), control: NSPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: NSPoint(x: rect.minX + topRadius, y: rect.maxY))
-        path.addQuadCurve(to: NSPoint(x: rect.minX, y: rect.maxY - topRadius), control: NSPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: NSPoint(x: rect.minX, y: rect.minY + bottomRadius))
-        path.addQuadCurve(to: NSPoint(x: rect.minX + bottomRadius, y: rect.minY), control: NSPoint(x: rect.minX, y: rect.minY))
-        path.closeSubpath()
-        return path
-    }
-
-    private func updateVisibleTitle() {
-        guard !fullTitle.isEmpty else { return }
-        titleLabel.stringValue = bounds.width < 48 ? String(fullTitle.prefix(2)) : fullTitle
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(convert(point, from: superview)) && isEnabled ? self : nil
-    }
-}
-
 final class DashboardStripView: NSView {
     var onTaskSelected: ((String) -> Void)?
     private let rootStack = NSStackView()
@@ -376,39 +205,7 @@ final class DashboardStripView: NSView {
     private var tickTimer: Timer?
     private var statusLayoutKey: [String]?
     private var taskBlocks: [GlassBlockView] = []
-    private var chromeTabBlocks: [ChromeTabButtonView] = []
     private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
-    private var quotaWidthConstraint: NSLayoutConstraint?
-    private var mediaGroupWidthConstraint: NSLayoutConstraint?
-    private var chromeTabs: [ChromeTabSnapshot] = []
-    private var chromeStatusText: String?
-    private var isChromeMode = false
-    var onChromeTabSelected: ((Int64, Int64) -> Void)?
-
-    func updateChromeTabs(_ tabs: [ChromeTabSnapshot], statusText: String? = nil) {
-        let contentChanged = !isChromeMode || chromeTabs != tabs || chromeStatusText != statusText
-        isChromeMode = true
-        chromeTabs = tabs
-        chromeStatusText = statusText
-        leftMediaStack.isHidden = true
-        mediaGroupWidthConstraint?.isActive = false
-        quotaStack.isHidden = true
-        quotaWidthConstraint?.isActive = false
-        if contentChanged { rebuild() }
-    }
-
-    func showCodex() {
-        guard isChromeMode else { return }
-        isChromeMode = false
-        chromeTabs = []
-        chromeStatusText = nil
-        leftMediaStack.isHidden = false
-        mediaGroupWidthConstraint?.isActive = true
-        quotaStack.isHidden = false
-        quotaWidthConstraint?.isActive = true
-        statusLayoutKey = nil
-        rebuild()
-    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -425,7 +222,6 @@ final class DashboardStripView: NSView {
         leftMediaStack.setContentHuggingPriority(.required, for: .horizontal)
         leftMediaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         let mediaGroupWidth = leftMediaStack.widthAnchor.constraint(equalToConstant: 152)
-        mediaGroupWidthConstraint = mediaGroupWidth
         statusStack.orientation = .horizontal
         statusStack.alignment = .centerY
         statusStack.spacing = 5
@@ -446,7 +242,6 @@ final class DashboardStripView: NSView {
         quotaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: 181)
         preferredQuotaWidth.priority = .defaultHigh
-        quotaWidthConstraint = preferredQuotaWidth
         // Use the native 13-inch Touch Bar width as a preferred size. The
         // constraint is intentionally high-but-breakable: on a narrower bar
         // AppKit must shrink the equal-fill status blocks instead of clipping
@@ -473,10 +268,7 @@ final class DashboardStripView: NSView {
             preferredQuotaWidth,
             heightAnchor.constraint(equalToConstant: 30),
         ])
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, !self.isChromeMode else { return }
-            self.rebuild()
-        }
+        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.rebuild() }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -517,40 +309,6 @@ final class DashboardStripView: NSView {
             ))
         }
 
-        if isChromeMode {
-            let layoutKey = ["__chrome__", chromeStatusText ?? ""]
-                + chromeTabs.map { "\($0.windowID):\($0.tabID)" }
-            if statusLayoutKey != layoutKey {
-                [taskStack, quotaStack].forEach { stack in
-                    stack.arrangedSubviews.forEach { view in
-                        stack.removeArrangedSubview(view)
-                        view.removeFromSuperview()
-                    }
-                }
-                taskBlocks = []
-                chromeTabBlocks = []
-                for tab in chromeTabs {
-                    let block = ChromeTabButtonView()
-                    block.onTap = { [weak self] in
-                        self?.onChromeTabSelected?(tab.windowID, tab.tabID)
-                    }
-                    chromeTabBlocks.append(block)
-                    taskStack.addArrangedSubview(block)
-                }
-                if chromeTabs.isEmpty {
-                    let block = ChromeTabButtonView()
-                    block.isEnabled = false
-                    block.set(title: chromeStatusText ?? "Chrome · 无标签页", isActive: false)
-                    taskStack.addArrangedSubview(block)
-                }
-                statusLayoutKey = layoutKey
-            }
-            for (tab, block) in zip(chromeTabs, chromeTabBlocks) {
-                block.set(title: tab.title, isActive: tab.isActive)
-            }
-            return
-        }
-
         let visibleTasks = Array(snapshot.tasks.prefix(6))
         let layoutKey = visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID)
         if statusLayoutKey != layoutKey {
@@ -561,7 +319,6 @@ final class DashboardStripView: NSView {
                 }
             }
             taskBlocks = []
-            chromeTabBlocks = []
             quotaBlocks = [:]
 
             if visibleTasks.isEmpty {
