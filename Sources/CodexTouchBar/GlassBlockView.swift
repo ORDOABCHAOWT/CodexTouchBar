@@ -96,6 +96,7 @@ final class GlassBlockView: NSButton {
         isBordered = false
         bezelStyle = .recessed
         focusRingType = .none
+        refusesFirstResponder = true
         imagePosition = .noImage
         cell?.usesSingleLineMode = true
         cell?.wraps = false
@@ -165,23 +166,21 @@ final class GlassBlockView: NSButton {
     }
 }
 
-/// Uses Apple's native NSButton bezel and SF Symbol rendering for playback.
+/// Uses AppKit's native Touch Bar templates and button bezel.
 final class MediaButtonView: NSButton {
     init(symbolName: String, label: String, target: AnyObject, action: Selector) {
-        var image = NSImage(systemSymbolName: symbolName, accessibilityDescription: label) ?? NSImage()
+        let image = Self.nativeImage(symbolName, label: label)
         super.init(frame: .zero)
-        image = image.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 17, weight: .semibold)) ?? image
         self.image = image
         self.target = target
         self.action = action
         translatesAutoresizingMaskIntoConstraints = false
         bezelStyle = .rounded
         isBordered = true
-        bezelColor = NSColor(calibratedWhite: 0.18, alpha: 0.92)
         focusRingType = .none
+        refusesFirstResponder = true
         imagePosition = .imageOnly
         imageScaling = .scaleProportionallyDown
-        contentTintColor = NSColor.white.withAlphaComponent(0.96)
         toolTip = label
         setAccessibilityLabel(label)
         sendAction(on: [.leftMouseDown])
@@ -192,6 +191,25 @@ final class MediaButtonView: NSButton {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    private static func nativeImage(_ symbol: String, label: String) -> NSImage {
+        let names: [String: NSImage.Name] = [
+            "backward.fill": NSImage.touchBarSkipToStartTemplateName,
+            "forward.fill": NSImage.touchBarSkipToEndTemplateName,
+            "play.fill": NSImage.touchBarPlayTemplateName,
+            "pause.fill": NSImage.touchBarPauseTemplateName,
+            "playpause.fill": NSImage.touchBarPlayPauseTemplateName,
+        ]
+        return names[symbol].flatMap { NSImage(named: $0) }
+            ?? NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+            ?? NSImage()
+    }
+
+    func setSymbol(_ symbolName: String, label: String) {
+        image = Self.nativeImage(symbolName, label: label)
+        toolTip = label
+        setAccessibilityLabel(label)
+    }
 }
 
 final class DashboardStripView: NSView {
@@ -206,6 +224,10 @@ final class DashboardStripView: NSView {
     private var statusLayoutKey: [String]?
     private var taskBlocks: [GlassBlockView] = []
     private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
+    private var playPauseButton: MediaButtonView?
+    private var playbackStateKnown = false
+    private var playbackIsPlaying = false
+    private var playbackReadGeneration: UInt64 = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -268,7 +290,10 @@ final class DashboardStripView: NSView {
             preferredQuotaWidth,
             heightAnchor.constraint(equalToConstant: 30),
         ])
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.rebuild() }
+        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.rebuild()
+            self?.refreshPlaybackState()
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -295,12 +320,15 @@ final class DashboardStripView: NSView {
                 target: self,
                 action: #selector(previousTrack)
             ))
-            leftMediaStack.addArrangedSubview(MediaButtonView(
+            let playButton = MediaButtonView(
                 symbolName: "playpause.fill",
                 label: "播放或暂停",
                 target: self,
                 action: #selector(togglePlayPause)
-            ))
+            )
+            playPauseButton = playButton
+            leftMediaStack.addArrangedSubview(playButton)
+            refreshPlaybackState()
             leftMediaStack.addArrangedSubview(MediaButtonView(
                 symbolName: "forward.fill",
                 label: "下一首",
@@ -372,8 +400,38 @@ final class DashboardStripView: NSView {
     }
 
     @objc private func previousTrack() { _ = MediaController.send(.previousTrack) }
-    @objc private func togglePlayPause() { _ = MediaController.send(.togglePlayPause) }
+    @objc private func togglePlayPause() {
+        let sent = MediaController.send(.togglePlayPause)
+        if sent, playbackStateKnown {
+            applyPlaybackState(known: true, playing: !playbackIsPlaying)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.refreshPlaybackState()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            self?.refreshPlaybackState()
+        }
+    }
     @objc private func nextTrack() { _ = MediaController.send(.nextTrack) }
+
+    private func refreshPlaybackState() {
+        playbackReadGeneration &+= 1
+        let generation = playbackReadGeneration
+        MediaController.readPlaybackState { [weak self] known, playing in
+            guard let self, generation == self.playbackReadGeneration else { return }
+            self.applyPlaybackState(known: known, playing: playing)
+        }
+    }
+
+    private func applyPlaybackState(known: Bool, playing: Bool) {
+        playbackStateKnown = known
+        playbackIsPlaying = known && playing
+        let symbol = known ? (playing ? "pause.fill" : "play.fill") : "playpause.fill"
+        let label = known
+            ? (playing ? "暂停（正在播放）" : "播放（已暂停）")
+            : "播放或暂停（状态不可用）"
+        playPauseButton?.setSymbol(symbol, label: label)
+    }
 
     private static func elapsedString(since start: Date) -> String {
         let seconds = max(0, Int(Date().timeIntervalSince(start)))

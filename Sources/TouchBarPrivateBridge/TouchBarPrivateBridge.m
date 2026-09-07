@@ -139,8 +139,8 @@ bool CTBSendMediaCommand(NSInteger command) {
         return false;
     }
     CTBMediaCommandFunction function = CTBMediaCommandSymbol();
-    if (function != NULL) {
-        return function(command, nil);
+    if (function != NULL && function(command, nil)) {
+        return true;
     }
 
     Class controllerClass = NSClassFromString(@"MRNowPlayingController");
@@ -155,6 +155,28 @@ bool CTBSendMediaCommand(NSInteger command) {
     }
     ((void (*)(id, SEL, NSInteger, id, id))objc_msgSend)(controller, commandSelector, command, @{}, nil);
     return true;
+}
+
+void CTBReadMediaPlaybackState(void (^completion)(bool known, bool playing)) {
+    void *handle = CTBMediaRemoteHandle();
+    typedef void (*GetPlaying)(dispatch_queue_t, void (^)(Boolean));
+    GetPlaying getPlaying = handle == NULL ? NULL : (GetPlaying)dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying");
+    if (getPlaying == NULL) {
+        completion(false, false);
+        return;
+    }
+
+    __block bool delivered = false;
+    getPlaying(dispatch_get_main_queue(), ^(Boolean playing) {
+        if (delivered) return;
+        delivered = true;
+        completion(true, playing);
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (delivered) return;
+        delivered = true;
+        completion(false, false);
+    });
 }
 
 static NSString *CTBTextColumn(sqlite3_stmt *statement, int column) {
