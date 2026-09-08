@@ -228,6 +228,9 @@ final class DashboardStripView: NSView {
     private var playbackStateKnown = false
     private var playbackIsPlaying = false
     private var playbackReadGeneration: UInt64 = 0
+    private var pendingPlaybackState: Bool?
+    private var pendingPlaybackDeadline = Date.distantPast
+    private var lastMediaCommandAt = Date.distantPast
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -399,26 +402,58 @@ final class DashboardStripView: NSView {
         block.set(text: value, accent: accent)
     }
 
-    @objc private func previousTrack() { _ = MediaController.send(.previousTrack) }
+    @objc private func previousTrack() {
+        guard beginMediaCommand() else { return }
+        _ = MediaController.send(.previousTrack)
+    }
     @objc private func togglePlayPause() {
-        let sent = MediaController.send(.togglePlayPause)
-        if sent, playbackStateKnown {
-            applyPlaybackState(known: true, playing: !playbackIsPlaying)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            self?.refreshPlaybackState()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            self?.refreshPlaybackState()
+        guard beginMediaCommand() else { return }
+        let expectedState = !playbackIsPlaying
+        beginPendingPlaybackState(expectedState)
+        // CTBSendMediaCommand already uses the system MediaRemote path and
+        // its controller fallback. Sending a second toggle after an ambiguous
+        // return value can immediately undo a command that did reach the
+        // player, leaving both playback and the icon in the original state.
+        _ = MediaController.send(.togglePlayPause)
+    }
+    @objc private func nextTrack() {
+        guard beginMediaCommand() else { return }
+        _ = MediaController.send(.nextTrack)
+    }
+
+    private func beginMediaCommand() -> Bool {
+        let now = Date()
+        guard now.timeIntervalSince(lastMediaCommandAt) >= 0.18 else { return false }
+        lastMediaCommandAt = now
+        return true
+    }
+
+    private func beginPendingPlaybackState(_ playing: Bool) {
+        pendingPlaybackState = playing
+        pendingPlaybackDeadline = Date().addingTimeInterval(3)
+        applyPlaybackState(known: true, playing: playing)
+
+        for delay in [0.35, 0.9, 1.8, 3.2] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.refreshPlaybackState()
+            }
         }
     }
-    @objc private func nextTrack() { _ = MediaController.send(.nextTrack) }
 
     private func refreshPlaybackState() {
         playbackReadGeneration &+= 1
         let generation = playbackReadGeneration
         MediaController.readPlaybackState { [weak self] known, playing in
             guard let self, generation == self.playbackReadGeneration else { return }
+            if let expected = self.pendingPlaybackState {
+                if known, playing == expected {
+                    self.pendingPlaybackState = nil
+                } else if Date() < self.pendingPlaybackDeadline {
+                    return
+                } else {
+                    self.pendingPlaybackState = nil
+                }
+            }
             self.applyPlaybackState(known: known, playing: playing)
         }
     }
