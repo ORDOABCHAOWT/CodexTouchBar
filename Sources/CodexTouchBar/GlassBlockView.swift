@@ -231,9 +231,23 @@ final class DashboardStripView: NSView {
     private var pendingPlaybackState: Bool?
     private var pendingPlaybackDeadline = Date.distantPast
     private var lastMediaCommandAt = Date.distantPast
+    private var musicStateObserver: NSObjectProtocol?
+    private var musicStateIsAuthoritative = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        musicStateObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.Music.playerInfo"),
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let state = notification.userInfo?["Player State"] as? String,
+                  ["Playing", "Paused", "Stopped"].contains(state) else { return }
+            self.musicStateIsAuthoritative = true
+            self.playbackReadGeneration &+= 1
+            self.pendingPlaybackState = nil
+            self.applyPlaybackState(known: true, playing: state == "Playing")
+        }
         translatesAutoresizingMaskIntoConstraints = false
         rootStack.translatesAutoresizingMaskIntoConstraints = false
         rootStack.orientation = .horizontal
@@ -441,6 +455,13 @@ final class DashboardStripView: NSView {
     }
 
     private func refreshPlaybackState() {
+        if musicStateIsAuthoritative {
+            if NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty {
+                musicStateIsAuthoritative = false
+            } else {
+                return
+            }
+        }
         playbackReadGeneration &+= 1
         let generation = playbackReadGeneration
         MediaController.readPlaybackState { [weak self] known, playing in
@@ -459,6 +480,7 @@ final class DashboardStripView: NSView {
     }
 
     private func applyPlaybackState(known: Bool, playing: Bool) {
+        guard known || !playbackStateKnown else { return }
         playbackStateKnown = known
         playbackIsPlaying = known && playing
         let symbol = known ? (playing ? "pause.fill" : "play.fill") : "playpause.fill"
