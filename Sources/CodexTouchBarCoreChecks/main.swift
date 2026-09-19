@@ -60,9 +60,35 @@ private func checkRateLimits() throws {
     try expect(clampedWindow?.remainingPercent == 0, "quota clamp failed")
 }
 
+private func checkProviderSelection() throws {
+    let codexWindow = QuotaWindow(kind: .fiveHour, usedPercent: 10, durationMinutes: 300, resetsAt: nil)
+    var snapshot = DashboardSnapshot(quotas: [codexWindow], quotaError: nil)
+
+    try expect(snapshot.provider == .codex, "Codex must remain the default provider")
+    try expect(snapshot.showsQuotas, "Codex must show quotas")
+    try expect(snapshot.activeQuotas.map(\.kind) == [.fiveHour], "Codex quotas were not shown")
+
+    // Quotas come from the Codex app server, so the Claude view shows tasks
+    // only and must never present Codex's numbers as Claude's.
+    snapshot.provider = .claude
+    try expect(!snapshot.showsQuotas, "Claude must not show quota blocks")
+    try expect(snapshot.activeQuotas.isEmpty, "Codex quotas leaked into the Claude view")
+
+    snapshot.quotaError = "codex offline"
+    try expect(snapshot.activeQuotaError == nil, "a Codex error leaked into the Claude view")
+    snapshot.provider = .codex
+    try expect(snapshot.activeQuotaError == "codex offline", "the Codex error was not surfaced")
+
+    // The strip labels itself with the active assistant's name.
+    try expect(UsageProvider.claude.label == "Claude", "Claude label is wrong")
+    try expect(UsageProvider.codex.label == "Codex", "Codex label is wrong")
+}
+
+
 do {
     try checkHookAllowlist()
     try checkRateLimits()
+    try checkProviderSelection()
     print("CodexTouchBarCoreChecks passed")
 } catch {
     fputs("CodexTouchBarCoreChecks failed: \(error)\n", stderr)

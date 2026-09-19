@@ -93,6 +93,14 @@ final class StatusStore {
         snapshot.quotaError = message
     }
 
+    /// Switches which assistant's quotas the Touch Bar shows. Publishes so the
+    /// strip repaints immediately when the frontmost app changes.
+    func setProvider(_ provider: UsageProvider) {
+        guard snapshot.provider != provider else { return }
+        snapshot.provider = provider
+        publish()
+    }
+
     private func removeExpiredTasks() {
         let now = Date()
         suppressedDetectedTaskIDs = suppressedDetectedTaskIDs.filter { _, expiresAt in expiresAt > now }
