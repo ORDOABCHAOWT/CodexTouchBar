@@ -10,6 +10,10 @@ final class StatusStore {
     }
     private var hookTasksByID: [String: TaskSnapshot] = [:]
     private var detectedTasksByID: [String: TaskSnapshot] = [:]
+    /// Claude sessions are tracked separately: hook packets and thread titles
+    /// belong to Codex, so merging the two would attribute one assistant's
+    /// work to the other.
+    private var claudeTasksByID: [String: TaskSnapshot] = [:]
     // A `Stop` hook is authoritative. Keep a short in-memory tombstone so the
     // log-index fallback cannot immediately resurrect that completed task.
     private var suppressedDetectedTaskIDs: [String: Date] = [:]
@@ -75,6 +79,11 @@ final class StatusStore {
         publish()
     }
 
+    func updateClaudeTasks(_ tasks: [TaskSnapshot]) {
+        claudeTasksByID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.sessionID, $0) })
+        publish()
+    }
+
     func updateThreadTitles(_ titles: [String: String]) {
         titlesByID.merge(titles) { _, new in new }
         for (id, title) in titles {
@@ -115,8 +124,13 @@ final class StatusStore {
 
     private func publish() {
         let now = Date()
-        var merged = detectedTasksByID.filter { !isDetectedTaskSuppressed($0.key, at: now) }
-        for (id, task) in hookTasksByID { merged[id] = task }
+        var merged: [String: TaskSnapshot]
+        if snapshot.provider == .claude {
+            merged = claudeTasksByID
+        } else {
+            merged = detectedTasksByID.filter { !isDetectedTaskSuppressed($0.key, at: now) }
+            for (id, task) in hookTasksByID { merged[id] = task }
+        }
         snapshot.tasks = merged.values
             .sorted { lhs, rhs in
                 let lhsTerminal = lhs.phase == .completed || lhs.phase == .failed

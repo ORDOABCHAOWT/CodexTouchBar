@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let socketServer = HookSocketServer()
     private let codexClient = CodexAppServerClient()
     private let activityMonitor = CodexActivityMonitor()
+    private let claudeMonitor = ClaudeActivityMonitor()
     private let touchBarController = TouchBarController()
     private var previewController: PreviewWindowController?
     private var statusItem: NSStatusItem?
@@ -29,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         touchBarController.install()
         codexClient.start()
         activityMonitor.start()
+        claudeMonitor.start()
         store.onChange?(store.snapshot)
 
         if CommandLine.arguments.contains("--preview") || !touchBarController.privateAPIAvailable {
@@ -60,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         codexClient.stop()
         activityMonitor.stop()
+        claudeMonitor.stop()
         socketServer.stop()
         touchBarController.uninstall()
     }
@@ -73,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codexClient.onThreadTitles = { [weak self] titles in self?.store.updateThreadTitles(titles) }
         codexClient.onError = { [weak self] message in self?.store.setQuotaError(message) }
         activityMonitor.onTasks = { [weak self] tasks in self?.store.updateDetectedTasks(tasks) }
+        claudeMonitor.onTasks = { [weak self] tasks in self?.store.updateClaudeTasks(tasks) }
         touchBarController.onProviderChange = { [weak self] provider in
             guard let self, !forcedProvider else { return }
             store.setProvider(provider)
