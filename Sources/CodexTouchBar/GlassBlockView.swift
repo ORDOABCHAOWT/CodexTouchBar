@@ -224,6 +224,7 @@ final class DashboardStripView: NSView {
     private var statusLayoutKey: [String]?
     private var taskBlocks: [GlassBlockView] = []
     private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
+    private var quotaWidthConstraint: NSLayoutConstraint?
     private var playPauseButton: MediaButtonView?
     private var playbackStateKnown = false
     private var playbackIsPlaying = false
@@ -279,8 +280,9 @@ final class DashboardStripView: NSView {
         quotaStack.distribution = .fill
         quotaStack.setContentHuggingPriority(.required, for: .horizontal)
         quotaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: 181)
+        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: Self.quotaStackWidth(for: .codex))
         preferredQuotaWidth.priority = .defaultHigh
+        quotaWidthConstraint = preferredQuotaWidth
         // Use the native 13-inch Touch Bar width as a preferred size. The
         // constraint is intentionally high-but-breakable: on a narrower bar
         // AppKit must shrink the equal-fill status blocks instead of clipping
@@ -355,7 +357,9 @@ final class DashboardStripView: NSView {
         }
 
         let visibleTasks = Array(snapshot.tasks.prefix(6))
-        let layoutKey = visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID)
+        let quotaKinds = Self.quotaKinds(for: snapshot.provider)
+        let layoutKey = ["__\(snapshot.provider.rawValue)__"]
+            + (visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID))
         if statusLayoutKey != layoutKey {
             [taskStack, quotaStack].forEach { stack in
                 stack.arrangedSubviews.forEach { view in
@@ -378,8 +382,11 @@ final class DashboardStripView: NSView {
                     taskStack.addArrangedSubview(block)
                 }
             }
-            quotaBlocks[.fiveHour] = addQuotaBlock(kind: .fiveHour, accent: .teal)
-            quotaBlocks[.weekly] = addQuotaBlock(kind: .weekly, accent: .indigo)
+            quotaWidthConstraint?.constant = Self.quotaStackWidth(for: snapshot.provider)
+            let blockWidth = Self.quotaBlockWidth(for: snapshot.provider)
+            for (kind, accent) in quotaKinds {
+                quotaBlocks[kind] = addQuotaBlock(kind: kind, accent: accent, width: blockWidth)
+            }
             statusLayoutKey = layoutKey
         }
 
@@ -392,16 +399,20 @@ final class DashboardStripView: NSView {
             )
         }
 
-        let quotaByKind = Dictionary(uniqueKeysWithValues: snapshot.quotas.map { ($0.kind, $0) })
-        updateQuotaBlock(quotaBlocks[.fiveHour], kind: .fiveHour, window: quotaByKind[.fiveHour], accent: .teal)
-        updateQuotaBlock(quotaBlocks[.weekly], kind: .weekly, window: quotaByKind[.weekly], accent: .indigo)
+        let quotaByKind = Dictionary(
+            snapshot.activeQuotas.map { ($0.kind, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for (kind, accent) in quotaKinds {
+            updateQuotaBlock(quotaBlocks[kind], kind: kind, window: quotaByKind[kind], accent: accent)
+        }
 
     }
 
     @discardableResult
-    private func addQuotaBlock(kind: QuotaKind, accent: GlassAccent) -> GlassBlockView {
+    private func addQuotaBlock(kind: QuotaKind, accent: GlassAccent, width blockWidth: CGFloat = 88) -> GlassBlockView {
         let block = GlassBlockView()
-        let width = block.widthAnchor.constraint(equalToConstant: 88)
+        let width = block.widthAnchor.constraint(equalToConstant: blockWidth)
         width.priority = .defaultHigh
         NSLayoutConstraint.activate([width])
         quotaStack.addArrangedSubview(block)
@@ -409,9 +420,41 @@ final class DashboardStripView: NSView {
         return block
     }
 
+    /// Blocks are laid out edge to edge with a 5pt gap, so the stack width has
+    /// to track the block count or the rightmost block would be clipped.
+    private static func quotaBlockWidth(for provider: UsageProvider) -> CGFloat {
+        provider == .claude ? 76 : 88
+    }
+
+    private static func quotaStackWidth(for provider: UsageProvider) -> CGFloat {
+        let count = CGFloat(quotaKinds(for: provider).count)
+        return count * quotaBlockWidth(for: provider) + (count - 1) * 5
+    }
+
+    /// Which quota blocks each assistant shows. Claude reports per-model weekly
+    /// allowances that Codex has no equivalent for.
+    private static func quotaKinds(for provider: UsageProvider) -> [(QuotaKind, GlassAccent)] {
+        switch provider {
+        case .codex:
+            return [(.fiveHour, .teal), (.weekly, .indigo)]
+        case .claude:
+            return [(.fiveHour, .teal), (.weekly, .indigo), (.weeklyOpus, .purple), (.weeklySonnet, .blue)]
+        }
+    }
+
+    private static func quotaPrefix(_ kind: QuotaKind) -> String {
+        switch kind {
+        case .fiveHour: return "5h"
+        case .weekly: return "周"
+        case .weeklyOpus: return "Op"
+        case .weeklySonnet: return "So"
+        case .other: return "额度"
+        }
+    }
+
     private func updateQuotaBlock(_ block: GlassBlockView?, kind: QuotaKind, window: QuotaWindow?, accent: GlassAccent) {
         guard let block else { return }
-        let prefix = kind == .fiveHour ? "5h" : "周"
+        let prefix = Self.quotaPrefix(kind)
         let value = window.map { "\(prefix) \($0.remainingPercent)%" } ?? "\(prefix) …"
         block.set(text: value, accent: accent)
     }

@@ -91,13 +91,32 @@ public struct TaskSnapshot: Equatable, Sendable {
 public enum QuotaKind: String, Codable, Sendable {
     case fiveHour
     case weekly
+    case weeklyOpus
+    case weeklySonnet
     case other
 
     public var label: String {
         switch self {
         case .fiveHour: return "5小时"
         case .weekly: return "本周"
+        case .weeklyOpus: return "周 Opus"
+        case .weeklySonnet: return "周 Sonnet"
         case .other: return "额度"
+        }
+    }
+}
+
+/// Which assistant the Touch Bar is currently reporting on. The frontmost
+/// application decides this, so quotas from one provider are never shown
+/// under the other's label.
+public enum UsageProvider: String, Codable, Sendable {
+    case codex
+    case claude
+
+    public var label: String {
+        switch self {
+        case .codex: return "Codex"
+        case .claude: return "Claude"
         }
     }
 }
@@ -122,10 +141,34 @@ public struct DashboardSnapshot: Equatable, Sendable {
     public var tasks: [TaskSnapshot]
     public var quotas: [QuotaWindow]
     public var quotaError: String?
+    /// Quotas for whichever assistant is frontmost. Codex stays the default so
+    /// existing behaviour is unchanged until Claude is in front.
+    public var provider: UsageProvider
+    public var claudeQuotas: [QuotaWindow]
+    public var claudeQuotaError: String?
 
-    public init(tasks: [TaskSnapshot] = [], quotas: [QuotaWindow] = [], quotaError: String? = nil) {
+    public init(
+        tasks: [TaskSnapshot] = [],
+        quotas: [QuotaWindow] = [],
+        quotaError: String? = nil,
+        provider: UsageProvider = .codex,
+        claudeQuotas: [QuotaWindow] = [],
+        claudeQuotaError: String? = nil
+    ) {
         self.tasks = tasks
         self.quotas = quotas
         self.quotaError = quotaError
+        self.provider = provider
+        self.claudeQuotas = claudeQuotas
+        self.claudeQuotaError = claudeQuotaError
+    }
+
+    /// The quota list the Touch Bar should render right now.
+    public var activeQuotas: [QuotaWindow] {
+        provider == .claude ? claudeQuotas : quotas
+    }
+
+    public var activeQuotaError: String? {
+        provider == .claude ? claudeQuotaError : quotaError
     }
 }

@@ -6,11 +6,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = StatusStore()
     private let socketServer = HookSocketServer()
     private let codexClient = CodexAppServerClient()
+    private let claudeClient = ClaudeUsageClient()
     private let activityMonitor = CodexActivityMonitor()
     private let touchBarController = TouchBarController()
     private var previewController: PreviewWindowController?
     private var statusItem: NSStatusItem?
     private var connectionMenuItem: NSMenuItem?
+    /// Set by the demo flags so a snapshot renders one provider deterministically.
+    private var forcedProvider = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureStatusItem()
@@ -26,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         touchBarController.install()
         codexClient.start()
+        claudeClient.start()
         activityMonitor.start()
         store.onChange?(store.snapshot)
 
@@ -34,6 +38,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if CommandLine.arguments.contains("--demo") {
             installDemoTasks()
+            forcedProvider = true
+            store.setProvider(.codex)
+        }
+        // Renders the Claude layout without contacting the usage endpoint, so
+        // the strip can be inspected offline.
+        if CommandLine.arguments.contains("--demo-claude") {
+            installDemoTasks()
+            store.updateClaudeQuotas([
+                QuotaWindow(kind: .fiveHour, usedPercent: 18, durationMinutes: 300, resetsAt: nil),
+                QuotaWindow(kind: .weekly, usedPercent: 47, durationMinutes: 10_080, resetsAt: nil),
+                QuotaWindow(kind: .weeklyOpus, usedPercent: 72, durationMinutes: 10_080, resetsAt: nil),
+                QuotaWindow(kind: .weeklySonnet, usedPercent: 5, durationMinutes: 10_080, resetsAt: nil),
+            ])
+            forcedProvider = true
+            store.setProvider(.claude)
         }
         if let snapshotPath = argumentValue(after: "--snapshot") {
             let preview = ensurePreviewController()
@@ -49,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         codexClient.stop()
+        claudeClient.stop()
         activityMonitor.stop()
         socketServer.stop()
         touchBarController.uninstall()
@@ -63,6 +83,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codexClient.onThreadTitles = { [weak self] titles in self?.store.updateThreadTitles(titles) }
         codexClient.onError = { [weak self] message in self?.store.setQuotaError(message) }
         activityMonitor.onTasks = { [weak self] tasks in self?.store.updateDetectedTasks(tasks) }
+        claudeClient.onQuotas = { [weak self] windows in self?.store.updateClaudeQuotas(windows) }
+        claudeClient.onError = { [weak self] message in self?.store.setClaudeQuotaError(message) }
+        touchBarController.onProviderChange = { [weak self] provider in
+            guard let self, !forcedProvider else { return }
+            store.setProvider(provider)
+            // Refresh on switch so the numbers shown are current rather than
+            // whatever the last poll left behind.
+            if provider == .claude { claudeClient.refreshNow() }
+        }
     }
 
     private func configureStatusItem() {
