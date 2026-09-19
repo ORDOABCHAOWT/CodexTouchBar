@@ -16,6 +16,10 @@ final class ClaudeUsageClient {
     private var timer: DispatchSourceTimer?
     private var isStopped = false
     private var inFlight = false
+    /// The keychain is read once and reused. An ad-hoc signed build gets a new
+    /// code identity on every rebuild, so each read can prompt for the login
+    /// password; re-reading every poll would prompt continuously.
+    private var cachedToken: String?
 
     init() {
         let configuration = URLSessionConfiguration.ephemeral
@@ -55,10 +59,11 @@ final class ClaudeUsageClient {
 
     private func refresh() {
         guard !isStopped, !inFlight else { return }
-        guard let token = Self.readAccessToken() else {
+        guard let token = cachedToken ?? Self.readAccessToken() else {
             emitError("未找到 Claude 登录信息")
             return
         }
+        cachedToken = token
         inFlight = true
 
         var request = URLRequest(url: Self.usageURL)
@@ -79,6 +84,7 @@ final class ClaudeUsageClient {
                 }
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard status == 200 else {
+                    if status == 401 { self.cachedToken = nil }
                     self.emitError(status == 401 ? "Claude 登录已过期" : "Claude 额度不可用 (\(status))")
                     return
                 }
