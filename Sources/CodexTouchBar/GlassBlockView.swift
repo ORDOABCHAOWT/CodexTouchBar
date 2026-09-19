@@ -224,7 +224,6 @@ final class DashboardStripView: NSView {
     private var statusLayoutKey: [String]?
     private var taskBlocks: [GlassBlockView] = []
     private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
-    private var quotaWidthConstraint: NSLayoutConstraint?
     private var playPauseButton: MediaButtonView?
     private var playbackStateKnown = false
     private var playbackIsPlaying = false
@@ -273,24 +272,21 @@ final class DashboardStripView: NSView {
         taskStack.spacing = 5
         taskStack.distribution = .fillEqually
         taskStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        taskStack.setContentCompressionResistancePriority(.init(rawValue: 100), for: .horizontal)
+        taskStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         quotaStack.orientation = .horizontal
         quotaStack.alignment = .centerY
         quotaStack.spacing = 5
         quotaStack.distribution = .fill
         quotaStack.setContentHuggingPriority(.required, for: .horizontal)
         quotaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
-        // The quota area is the one part that must never shrink: its whole
-        // purpose is showing a number that is wrong when truncated.
-        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 205)
-        preferredQuotaWidth.priority = .required
-        quotaWidthConstraint = preferredQuotaWidth
+        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: 181)
+        preferredQuotaWidth.priority = .defaultHigh
         // Use the native 13-inch Touch Bar width as a preferred size. The
         // constraint is intentionally high-but-breakable: on a narrower bar
         // AppKit must shrink the equal-fill status blocks instead of clipping
         // the rightmost one.
         let preferredStatusWidth = statusStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 520)
-        preferredStatusWidth.priority = .defaultLow
+        preferredStatusWidth.priority = .defaultHigh
 
         rootStack.addArrangedSubview(leftMediaStack)
         rootStack.addArrangedSubview(statusStack)
@@ -359,8 +355,7 @@ final class DashboardStripView: NSView {
         }
 
         let visibleTasks = Array(snapshot.tasks.prefix(6))
-        let layoutKey = ["__\(snapshot.provider.rawValue)__"]
-            + (visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID))
+        let layoutKey = visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID)
         if statusLayoutKey != layoutKey {
             [taskStack, quotaStack].forEach { stack in
                 stack.arrangedSubviews.forEach { view in
@@ -373,7 +368,7 @@ final class DashboardStripView: NSView {
 
             if visibleTasks.isEmpty {
                 let block = GlassBlockView()
-                block.set(text: "\(snapshot.provider.label) · 等待任务", accent: .gray)
+                block.set(text: "Codex · 等待任务", accent: .gray)
                 taskStack.addArrangedSubview(block)
             } else {
                 for task in visibleTasks {
@@ -383,14 +378,8 @@ final class DashboardStripView: NSView {
                     taskStack.addArrangedSubview(block)
                 }
             }
-            // Only Codex reports quotas, so in Claude mode the whole strip
-            // belongs to the task blocks.
-            quotaStack.isHidden = !snapshot.showsQuotas
-            quotaWidthConstraint?.isActive = snapshot.showsQuotas
-            if snapshot.showsQuotas {
-                quotaBlocks[.fiveHour] = addQuotaBlock(kind: .fiveHour, accent: .teal)
-                quotaBlocks[.weekly] = addQuotaBlock(kind: .weekly, accent: .indigo)
-            }
+            quotaBlocks[.fiveHour] = addQuotaBlock(kind: .fiveHour, accent: .teal)
+            quotaBlocks[.weekly] = addQuotaBlock(kind: .weekly, accent: .indigo)
             statusLayoutKey = layoutKey
         }
 
@@ -403,10 +392,7 @@ final class DashboardStripView: NSView {
             )
         }
 
-        let quotaByKind = Dictionary(
-            snapshot.activeQuotas.map { ($0.kind, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let quotaByKind = Dictionary(uniqueKeysWithValues: snapshot.quotas.map { ($0.kind, $0) })
         updateQuotaBlock(quotaBlocks[.fiveHour], kind: .fiveHour, window: quotaByKind[.fiveHour], accent: .teal)
         updateQuotaBlock(quotaBlocks[.weekly], kind: .weekly, window: quotaByKind[.weekly], accent: .indigo)
 
@@ -415,15 +401,9 @@ final class DashboardStripView: NSView {
     @discardableResult
     private func addQuotaBlock(kind: QuotaKind, accent: GlassAccent) -> GlassBlockView {
         let block = GlassBlockView()
-        // "● 5h 100%" measures ~63pt, so 100pt keeps the longest value clear of
-        // the rounded edges. The floor is required: a quota block that shrinks
-        // truncates its number, which is the one thing it exists to show.
-        let width = block.widthAnchor.constraint(equalToConstant: 100)
+        let width = block.widthAnchor.constraint(equalToConstant: 88)
         width.priority = .defaultHigh
-        let minimum = block.widthAnchor.constraint(greaterThanOrEqualToConstant: 72)
-        minimum.priority = .required
-        block.setContentCompressionResistancePriority(.required, for: .horizontal)
-        NSLayoutConstraint.activate([width, minimum])
+        NSLayoutConstraint.activate([width])
         quotaStack.addArrangedSubview(block)
         updateQuotaBlock(block, kind: kind, window: nil, accent: accent)
         return block

@@ -12,13 +12,8 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     private var workspaceObserver: NSObjectProtocol?
     private var isInstalled = false
     private let codexBundleIdentifiers: Set<String> = ["com.openai.codex", "com.openai.chatgpt"]
-    private let claudeBundleIdentifiers: Set<String> = ["com.anthropic.claudefordesktop"]
 
     private(set) var privateAPIAvailable = false
-    /// Raised when the frontmost assistant changes, so usage for the newly
-    /// active provider can be refreshed before it is shown.
-    var onProviderChange: ((UsageProvider) -> Void)?
-    private var currentProvider: UsageProvider?
 
     override init() {
         super.init()
@@ -84,25 +79,14 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         _ = CTBPresentSystemModalTouchBar(touchBar, trayIdentifier.rawValue)
     }
 
-    /// The assistant in front, or nil when neither is, in which case the
-    /// Touch Bar stays hidden exactly as before.
-    private var frontmostProvider: UsageProvider? {
-        guard let bundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return nil }
-        if codexBundleIdentifiers.contains(bundleIdentifier) { return .codex }
-        if claudeBundleIdentifiers.contains(bundleIdentifier) { return .claude }
-        return nil
+    private var isCodexFrontmost: Bool {
+        guard let bundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return false }
+        return codexBundleIdentifiers.contains(bundleIdentifier)
     }
-
-    private var isCodexFrontmost: Bool { frontmostProvider != nil }
 
     private func updateForFrontmostApplication() {
         guard privateAPIAvailable, isInstalled else { return }
-        let provider = frontmostProvider
-        if provider != currentProvider {
-            currentProvider = provider
-            if let provider { onProviderChange?(provider) }
-        }
-        if provider != nil {
+        if isCodexFrontmost {
             present()
         } else {
             CTBDismissSystemModalTouchBar(touchBar)

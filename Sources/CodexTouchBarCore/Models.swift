@@ -102,21 +102,6 @@ public enum QuotaKind: String, Codable, Sendable {
     }
 }
 
-/// Which assistant the Touch Bar is currently reporting on. The frontmost
-/// application decides this, so quotas from one provider are never shown
-/// under the other's label.
-public enum UsageProvider: String, Codable, Sendable {
-    case codex
-    case claude
-
-    public var label: String {
-        switch self {
-        case .codex: return "Codex"
-        case .claude: return "Claude"
-        }
-    }
-}
-
 public struct QuotaWindow: Equatable, Sendable {
     public let kind: QuotaKind
     public let usedPercent: Int
@@ -137,27 +122,10 @@ public struct DashboardSnapshot: Equatable, Sendable {
     public var tasks: [TaskSnapshot]
     public var quotas: [QuotaWindow]
     public var quotaError: String?
-    /// Which assistant is frontmost. Codex stays the default so existing
-    /// behaviour is unchanged until Claude is in front.
-    public var provider: UsageProvider
 
-    public init(
-        tasks: [TaskSnapshot] = [],
-        quotas: [QuotaWindow] = [],
-        quotaError: String? = nil,
-        provider: UsageProvider = .codex
-    ) {
+    public init(tasks: [TaskSnapshot] = [], quotas: [QuotaWindow] = [], quotaError: String? = nil) {
         self.tasks = tasks
         self.quotas = quotas
         self.quotaError = quotaError
-        self.provider = provider
     }
-
-    /// Quotas come from the Codex app server, which has no Claude equivalent,
-    /// so the Claude view shows tasks only.
-    public var showsQuotas: Bool { provider == .codex }
-
-    public var activeQuotas: [QuotaWindow] { showsQuotas ? quotas : [] }
-
-    public var activeQuotaError: String? { showsQuotas ? quotaError : nil }
 }

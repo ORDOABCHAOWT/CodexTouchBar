@@ -11,8 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previewController: PreviewWindowController?
     private var statusItem: NSStatusItem?
     private var connectionMenuItem: NSMenuItem?
-    /// Set by the demo flags so a snapshot renders one provider deterministically.
-    private var forcedProvider = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureStatusItem()
@@ -35,15 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showPreviewWindow()
         }
         if CommandLine.arguments.contains("--demo") {
-            if !CommandLine.arguments.contains("--no-tasks") { installDemoTasks() }
-            forcedProvider = true
-            store.setProvider(.codex)
-        }
-        // Renders the Claude layout, which shows tasks only and no quotas.
-        if CommandLine.arguments.contains("--demo-claude") {
-            if !CommandLine.arguments.contains("--no-tasks") { installDemoTasks() }
-            forcedProvider = true
-            store.setProvider(.claude)
+            installDemoTasks()
         }
         if let snapshotPath = argumentValue(after: "--snapshot") {
             let preview = ensurePreviewController()
@@ -73,10 +63,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codexClient.onThreadTitles = { [weak self] titles in self?.store.updateThreadTitles(titles) }
         codexClient.onError = { [weak self] message in self?.store.setQuotaError(message) }
         activityMonitor.onTasks = { [weak self] tasks in self?.store.updateDetectedTasks(tasks) }
-        touchBarController.onProviderChange = { [weak self] provider in
-            guard let self, !forcedProvider else { return }
-            store.setProvider(provider)
-        }
     }
 
     private func configureStatusItem() {

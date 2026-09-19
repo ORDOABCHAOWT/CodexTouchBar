@@ -3,23 +3,12 @@ import CodexTouchBarCore
 
 @MainActor
 final class PreviewWindowController: NSWindowController {
-    /// Defaults to a roomy preview, but --preview-width renders at the real
-    /// Touch Bar's usable strip width so truncation reproduces off-device.
-    static var previewWidth: CGFloat = {
-        guard let index = CommandLine.arguments.firstIndex(of: "--preview-width"),
-              case let next = CommandLine.arguments.index(after: index),
-              next < CommandLine.arguments.endIndex,
-              let value = Double(CommandLine.arguments[next])
-        else { return 760 }
-        return CGFloat(value)
-    }()
-
     private let dashboardView = DashboardStripView(frame: .zero)
     private let statusLabel = NSTextField(labelWithString: "")
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: Self.previewWidth, height: 124),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 124),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -28,7 +17,6 @@ final class PreviewWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
-        window.setContentSize(NSSize(width: Self.previewWidth, height: 124))
         dashboardView.onTaskSelected = { sessionID in
             _ = ThreadNavigator.open(sessionID: sessionID)
         }
@@ -40,20 +28,15 @@ final class PreviewWindowController: NSWindowController {
     func update(_ snapshot: DashboardSnapshot) {
         dashboardView.update(snapshot: snapshot)
         let taskCount = snapshot.tasks.count
-        // Claude shows tasks only, so it has no quota state to report.
-        guard snapshot.showsQuotas else {
-            statusLabel.stringValue = "\(snapshot.provider.label) · \(taskCount) 个活动任务"
-            return
-        }
         let quotaState: String
-        if let error = snapshot.activeQuotaError {
+        if let error = snapshot.quotaError {
             quotaState = error
-        } else if snapshot.activeQuotas.isEmpty {
+        } else if snapshot.quotas.isEmpty {
             quotaState = "正在读取额度"
         } else {
             quotaState = "额度连接正常"
         }
-        statusLabel.stringValue = "\(snapshot.provider.label) · \(taskCount) 个活动任务 · \(quotaState)"
+        statusLabel.stringValue = "\(taskCount) 个活动任务 · \(quotaState)"
     }
 
     func show() {
