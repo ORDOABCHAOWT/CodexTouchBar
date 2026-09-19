@@ -279,8 +279,8 @@ final class DashboardStripView: NSView {
         quotaStack.distribution = .fill
         quotaStack.setContentHuggingPriority(.required, for: .horizontal)
         quotaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: 181)
-        preferredQuotaWidth.priority = .defaultHigh
+        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 205)
+        preferredQuotaWidth.priority = .required
         // Use the native 13-inch Touch Bar width as a preferred size. The
         // constraint is intentionally high-but-breakable: on a narrower bar
         // AppKit must shrink the equal-fill status blocks instead of clipping
@@ -405,9 +405,15 @@ final class DashboardStripView: NSView {
     @discardableResult
     private func addQuotaBlock(kind: QuotaKind, accent: GlassAccent) -> GlassBlockView {
         let block = GlassBlockView()
-        let width = block.widthAnchor.constraint(equalToConstant: 88)
+        // "● 5h 100%" measures ~63pt, so 100pt keeps the longest value clear of
+        // the rounded edges. The floor is required: a quota block that shrinks
+        // truncates its number, which is the one thing it exists to show.
+        let width = block.widthAnchor.constraint(equalToConstant: 100)
         width.priority = .defaultHigh
-        NSLayoutConstraint.activate([width])
+        let minimum = block.widthAnchor.constraint(greaterThanOrEqualToConstant: 72)
+        minimum.priority = .required
+        block.setContentCompressionResistancePriority(.required, for: .horizontal)
+        NSLayoutConstraint.activate([width, minimum])
         quotaStack.addArrangedSubview(block)
         updateQuotaBlock(block, kind: kind, window: nil, accent: accent)
         return block
