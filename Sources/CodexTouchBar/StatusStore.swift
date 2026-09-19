@@ -93,17 +93,6 @@ final class StatusStore {
         snapshot.quotaError = message
     }
 
-    func updateClaudeQuotas(_ windows: [QuotaWindow]) {
-        snapshot.claudeQuotas = windows
-        snapshot.claudeQuotaError = nil
-        publish()
-    }
-
-    func setClaudeQuotaError(_ message: String) {
-        snapshot.claudeQuotaError = message
-        publish()
-    }
-
     /// Switches which assistant's quotas the Touch Bar shows. Publishes so the
     /// strip repaints immediately when the frontmost app changes.
     func setProvider(_ provider: UsageProvider) {

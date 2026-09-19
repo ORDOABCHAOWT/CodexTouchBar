@@ -40,6 +40,11 @@ final class PreviewWindowController: NSWindowController {
     func update(_ snapshot: DashboardSnapshot) {
         dashboardView.update(snapshot: snapshot)
         let taskCount = snapshot.tasks.count
+        // Claude shows tasks only, so it has no quota state to report.
+        guard snapshot.showsQuotas else {
+            statusLabel.stringValue = "\(snapshot.provider.label) · \(taskCount) 个活动任务"
+            return
+        }
         let quotaState: String
         if let error = snapshot.activeQuotaError {
             quotaState = error

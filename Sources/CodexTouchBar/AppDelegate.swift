@@ -6,7 +6,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = StatusStore()
     private let socketServer = HookSocketServer()
     private let codexClient = CodexAppServerClient()
-    private let claudeClient = ClaudeUsageClient()
     private let activityMonitor = CodexActivityMonitor()
     private let touchBarController = TouchBarController()
     private var previewController: PreviewWindowController?
@@ -29,7 +28,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         touchBarController.install()
         codexClient.start()
-        claudeClient.start()
         activityMonitor.start()
         store.onChange?(store.snapshot)
 
@@ -41,14 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forcedProvider = true
             store.setProvider(.codex)
         }
-        // Renders the Claude layout without contacting the usage endpoint, so
-        // the strip can be inspected offline.
+        // Renders the Claude layout, which shows tasks only and no quotas.
         if CommandLine.arguments.contains("--demo-claude") {
             if !CommandLine.arguments.contains("--no-tasks") { installDemoTasks() }
-            store.updateClaudeQuotas([
-                QuotaWindow(kind: .fiveHour, usedPercent: 18, durationMinutes: 300, resetsAt: nil),
-                QuotaWindow(kind: .weekly, usedPercent: 47, durationMinutes: 10_080, resetsAt: nil),
-            ])
             forcedProvider = true
             store.setProvider(.claude)
         }
@@ -66,7 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         codexClient.stop()
-        claudeClient.stop()
         activityMonitor.stop()
         socketServer.stop()
         touchBarController.uninstall()
@@ -81,14 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codexClient.onThreadTitles = { [weak self] titles in self?.store.updateThreadTitles(titles) }
         codexClient.onError = { [weak self] message in self?.store.setQuotaError(message) }
         activityMonitor.onTasks = { [weak self] tasks in self?.store.updateDetectedTasks(tasks) }
-        claudeClient.onQuotas = { [weak self] windows in self?.store.updateClaudeQuotas(windows) }
-        claudeClient.onError = { [weak self] message in self?.store.setClaudeQuotaError(message) }
         touchBarController.onProviderChange = { [weak self] provider in
             guard let self, !forcedProvider else { return }
             store.setProvider(provider)
-            // Refresh on switch so the numbers shown are current rather than
-            // whatever the last poll left behind.
-            if provider == .claude { claudeClient.refreshNow() }
         }
     }
 

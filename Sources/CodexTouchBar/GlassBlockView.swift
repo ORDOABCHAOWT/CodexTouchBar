@@ -224,6 +224,7 @@ final class DashboardStripView: NSView {
     private var statusLayoutKey: [String]?
     private var taskBlocks: [GlassBlockView] = []
     private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
+    private var quotaWidthConstraint: NSLayoutConstraint?
     private var playPauseButton: MediaButtonView?
     private var playbackStateKnown = false
     private var playbackIsPlaying = false
@@ -283,6 +284,7 @@ final class DashboardStripView: NSView {
         // purpose is showing a number that is wrong when truncated.
         let preferredQuotaWidth = quotaStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 205)
         preferredQuotaWidth.priority = .required
+        quotaWidthConstraint = preferredQuotaWidth
         // Use the native 13-inch Touch Bar width as a preferred size. The
         // constraint is intentionally high-but-breakable: on a narrower bar
         // AppKit must shrink the equal-fill status blocks instead of clipping
@@ -381,8 +383,14 @@ final class DashboardStripView: NSView {
                     taskStack.addArrangedSubview(block)
                 }
             }
-            quotaBlocks[.fiveHour] = addQuotaBlock(kind: .fiveHour, accent: .teal)
-            quotaBlocks[.weekly] = addQuotaBlock(kind: .weekly, accent: .indigo)
+            // Only Codex reports quotas, so in Claude mode the whole strip
+            // belongs to the task blocks.
+            quotaStack.isHidden = !snapshot.showsQuotas
+            quotaWidthConstraint?.isActive = snapshot.showsQuotas
+            if snapshot.showsQuotas {
+                quotaBlocks[.fiveHour] = addQuotaBlock(kind: .fiveHour, accent: .teal)
+                quotaBlocks[.weekly] = addQuotaBlock(kind: .weekly, accent: .indigo)
+            }
             statusLayoutKey = layoutKey
         }
 

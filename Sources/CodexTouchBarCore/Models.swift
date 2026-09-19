@@ -137,34 +137,27 @@ public struct DashboardSnapshot: Equatable, Sendable {
     public var tasks: [TaskSnapshot]
     public var quotas: [QuotaWindow]
     public var quotaError: String?
-    /// Quotas for whichever assistant is frontmost. Codex stays the default so
-    /// existing behaviour is unchanged until Claude is in front.
+    /// Which assistant is frontmost. Codex stays the default so existing
+    /// behaviour is unchanged until Claude is in front.
     public var provider: UsageProvider
-    public var claudeQuotas: [QuotaWindow]
-    public var claudeQuotaError: String?
 
     public init(
         tasks: [TaskSnapshot] = [],
         quotas: [QuotaWindow] = [],
         quotaError: String? = nil,
-        provider: UsageProvider = .codex,
-        claudeQuotas: [QuotaWindow] = [],
-        claudeQuotaError: String? = nil
+        provider: UsageProvider = .codex
     ) {
         self.tasks = tasks
         self.quotas = quotas
         self.quotaError = quotaError
         self.provider = provider
-        self.claudeQuotas = claudeQuotas
-        self.claudeQuotaError = claudeQuotaError
     }
 
-    /// The quota list the Touch Bar should render right now.
-    public var activeQuotas: [QuotaWindow] {
-        provider == .claude ? claudeQuotas : quotas
-    }
+    /// Quotas come from the Codex app server, which has no Claude equivalent,
+    /// so the Claude view shows tasks only.
+    public var showsQuotas: Bool { provider == .codex }
 
-    public var activeQuotaError: String? {
-        provider == .claude ? claudeQuotaError : quotaError
-    }
+    public var activeQuotas: [QuotaWindow] { showsQuotas ? quotas : [] }
+
+    public var activeQuotaError: String? { showsQuotas ? quotaError : nil }
 }
