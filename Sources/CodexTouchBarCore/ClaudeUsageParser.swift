@@ -10,14 +10,11 @@ public enum ClaudeUsageParser {
         case missingWindows
     }
 
-    /// Windows Claude reports, in the order they should appear on the Touch Bar.
-    /// `seven_day_opus` and `seven_day_sonnet` are per-model weekly allowances
-    /// that only some plans receive, so they are optional.
+    /// The two windows the Touch Bar shows. Claude also reports per-model
+    /// weekly allowances, which are deliberately not surfaced.
     private static let windowKeys: [(key: String, kind: QuotaKind)] = [
         ("five_hour", .fiveHour),
         ("seven_day", .weekly),
-        ("seven_day_opus", .weeklyOpus),
-        ("seven_day_sonnet", .weeklySonnet),
     ]
 
     public static func parseResponse(_ object: [String: Any]) throws -> RateLimitParseResult {

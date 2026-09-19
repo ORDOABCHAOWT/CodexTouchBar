@@ -86,13 +86,7 @@ public enum RateLimitParser {
 
     private static func quotaOrder(_ lhs: QuotaWindow, _ rhs: QuotaWindow) -> Bool {
         func rank(_ kind: QuotaKind) -> Int {
-            switch kind {
-            case .fiveHour: return 0
-            case .weekly: return 1
-            case .weeklyOpus: return 2
-            case .weeklySonnet: return 3
-            case .other: return 4
-            }
+            switch kind { case .fiveHour: return 0; case .weekly: return 1; case .other: return 2 }
         }
         return rank(lhs.kind) < rank(rhs.kind)
     }

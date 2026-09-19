@@ -29,14 +29,14 @@ final class PreviewWindowController: NSWindowController {
         dashboardView.update(snapshot: snapshot)
         let taskCount = snapshot.tasks.count
         let quotaState: String
-        if let error = snapshot.quotaError {
+        if let error = snapshot.activeQuotaError {
             quotaState = error
-        } else if snapshot.quotas.isEmpty {
+        } else if snapshot.activeQuotas.isEmpty {
             quotaState = "正在读取额度"
         } else {
             quotaState = "额度连接正常"
         }
-        statusLabel.stringValue = "\(taskCount) 个活动任务 · \(quotaState)"
+        statusLabel.stringValue = "\(snapshot.provider.label) · \(taskCount) 个活动任务 · \(quotaState)"
     }
 
     func show() {

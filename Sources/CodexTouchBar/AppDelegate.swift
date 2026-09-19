@@ -37,19 +37,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showPreviewWindow()
         }
         if CommandLine.arguments.contains("--demo") {
-            installDemoTasks()
+            if !CommandLine.arguments.contains("--no-tasks") { installDemoTasks() }
             forcedProvider = true
             store.setProvider(.codex)
         }
         // Renders the Claude layout without contacting the usage endpoint, so
         // the strip can be inspected offline.
         if CommandLine.arguments.contains("--demo-claude") {
-            installDemoTasks()
+            if !CommandLine.arguments.contains("--no-tasks") { installDemoTasks() }
             store.updateClaudeQuotas([
                 QuotaWindow(kind: .fiveHour, usedPercent: 18, durationMinutes: 300, resetsAt: nil),
                 QuotaWindow(kind: .weekly, usedPercent: 47, durationMinutes: 10_080, resetsAt: nil),
-                QuotaWindow(kind: .weeklyOpus, usedPercent: 72, durationMinutes: 10_080, resetsAt: nil),
-                QuotaWindow(kind: .weeklySonnet, usedPercent: 5, durationMinutes: 10_080, resetsAt: nil),
             ])
             forcedProvider = true
             store.setProvider(.claude)

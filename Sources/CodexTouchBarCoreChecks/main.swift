@@ -64,21 +64,22 @@ private func checkClaudeUsage() throws {
     let payload: [String: Any] = [
         "five_hour": ["utilization": 18, "resets_at": 2_000_000_000],
         "seven_day": ["utilization": 47, "resets_at": 2_000_100_000],
+        // Per-model allowances are reported by Claude but must not be shown.
         "seven_day_opus": ["utilization": 72, "resets_at": 2_000_100_000],
         "seven_day_sonnet": ["utilization": 5, "resets_at": 2_000_100_000],
     ]
     let windows = try ClaudeUsageParser.parseResponse(payload).windows
     try expect(
-        windows.map(\.kind) == [.fiveHour, .weekly, .weeklyOpus, .weeklySonnet],
-        "Claude usage windows were classified incorrectly"
+        windows.map(\.kind) == [.fiveHour, .weekly],
+        "Claude usage must expose only the 5-hour and weekly windows"
     )
-    try expect(windows.map(\.remainingPercent) == [82, 53, 28, 95], "Claude remaining quota calculation failed")
+    try expect(windows.map(\.remainingPercent) == [82, 53], "Claude remaining quota calculation failed")
     try expect(windows[0].resetsAt == Date(timeIntervalSince1970: 2_000_000_000), "Claude reset time was not parsed")
 
     // Plans without per-model allowances must still report the shared windows.
-    let partial: [String: Any] = ["five_hour": ["utilization": 10], "seven_day": ["utilization": 20]]
+    let partial: [String: Any] = ["five_hour": ["utilization": 10]]
     let partialWindows = try ClaudeUsageParser.parseResponse(partial).windows
-    try expect(partialWindows.map(\.kind) == [.fiveHour, .weekly], "optional Claude windows were not skipped")
+    try expect(partialWindows.map(\.kind) == [.fiveHour], "a missing weekly window must not be invented")
 
     // The payload is also accepted wrapped in a container.
     let wrapped: [String: Any] = ["usage": ["five_hour": ["utilization": 30]]]
@@ -102,20 +103,25 @@ private func checkClaudeUsage() throws {
 
 private func checkProviderSelection() throws {
     let codexWindow = QuotaWindow(kind: .fiveHour, usedPercent: 10, durationMinutes: 300, resetsAt: nil)
-    let claudeWindow = QuotaWindow(kind: .weeklyOpus, usedPercent: 60, durationMinutes: 10_080, resetsAt: nil)
+    let claudeWindow = QuotaWindow(kind: .weekly, usedPercent: 60, durationMinutes: 10_080, resetsAt: nil)
     var snapshot = DashboardSnapshot(quotas: [codexWindow], claudeQuotas: [claudeWindow])
 
     try expect(snapshot.provider == .codex, "Codex must remain the default provider")
     try expect(snapshot.activeQuotas.map(\.kind) == [.fiveHour], "Codex quotas were not selected by default")
 
     snapshot.provider = .claude
-    try expect(snapshot.activeQuotas.map(\.kind) == [.weeklyOpus], "Claude quotas were not selected when active")
+    try expect(snapshot.activeQuotas.map(\.kind) == [.weekly], "Claude quotas were not selected when active")
+    try expect(snapshot.activeQuotas.first?.remainingPercent == 40, "the Claude window's own value was not used")
 
     // An error from one provider must never surface under the other's label.
     snapshot.quotaError = "codex offline"
     try expect(snapshot.activeQuotaError == nil, "Codex error leaked into the Claude view")
     snapshot.claudeQuotaError = "claude offline"
     try expect(snapshot.activeQuotaError == "claude offline", "Claude error was not surfaced")
+
+    // The strip labels itself with the active assistant's name.
+    try expect(UsageProvider.claude.label == "Claude", "Claude label is wrong")
+    try expect(UsageProvider.codex.label == "Codex", "Codex label is wrong")
 }
 
 

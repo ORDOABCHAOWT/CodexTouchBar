@@ -91,16 +91,12 @@ public struct TaskSnapshot: Equatable, Sendable {
 public enum QuotaKind: String, Codable, Sendable {
     case fiveHour
     case weekly
-    case weeklyOpus
-    case weeklySonnet
     case other
 
     public var label: String {
         switch self {
         case .fiveHour: return "5小时"
         case .weekly: return "本周"
-        case .weeklyOpus: return "周 Opus"
-        case .weeklySonnet: return "周 Sonnet"
         case .other: return "额度"
         }
     }
