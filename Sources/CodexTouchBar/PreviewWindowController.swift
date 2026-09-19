@@ -3,12 +3,23 @@ import CodexTouchBarCore
 
 @MainActor
 final class PreviewWindowController: NSWindowController {
+    /// Defaults to a roomy preview, but --preview-width renders at the real
+    /// Touch Bar's usable strip width so truncation reproduces off-device.
+    static var previewWidth: CGFloat = {
+        guard let index = CommandLine.arguments.firstIndex(of: "--preview-width"),
+              case let next = CommandLine.arguments.index(after: index),
+              next < CommandLine.arguments.endIndex,
+              let value = Double(CommandLine.arguments[next])
+        else { return 760 }
+        return CGFloat(value)
+    }()
+
     private let dashboardView = DashboardStripView(frame: .zero)
     private let statusLabel = NSTextField(labelWithString: "")
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 124),
+            contentRect: NSRect(x: 0, y: 0, width: Self.previewWidth, height: 124),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -17,6 +28,7 @@ final class PreviewWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
+        window.setContentSize(NSSize(width: Self.previewWidth, height: 124))
         dashboardView.onTaskSelected = { sessionID in
             _ = ThreadNavigator.open(sessionID: sessionID)
         }

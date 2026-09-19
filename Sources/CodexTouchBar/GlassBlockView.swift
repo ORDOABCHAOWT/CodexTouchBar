@@ -272,13 +272,15 @@ final class DashboardStripView: NSView {
         taskStack.spacing = 5
         taskStack.distribution = .fillEqually
         taskStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        taskStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        taskStack.setContentCompressionResistancePriority(.init(rawValue: 100), for: .horizontal)
         quotaStack.orientation = .horizontal
         quotaStack.alignment = .centerY
         quotaStack.spacing = 5
         quotaStack.distribution = .fill
         quotaStack.setContentHuggingPriority(.required, for: .horizontal)
         quotaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // The quota area is the one part that must never shrink: its whole
+        // purpose is showing a number that is wrong when truncated.
         let preferredQuotaWidth = quotaStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 205)
         preferredQuotaWidth.priority = .required
         // Use the native 13-inch Touch Bar width as a preferred size. The
@@ -286,7 +288,7 @@ final class DashboardStripView: NSView {
         // AppKit must shrink the equal-fill status blocks instead of clipping
         // the rightmost one.
         let preferredStatusWidth = statusStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 520)
-        preferredStatusWidth.priority = .defaultHigh
+        preferredStatusWidth.priority = .defaultLow
 
         rootStack.addArrangedSubview(leftMediaStack)
         rootStack.addArrangedSubview(statusStack)
