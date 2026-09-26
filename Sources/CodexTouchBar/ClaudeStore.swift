@@ -1,0 +1,155 @@
+import CodexTouchBarCore
+import Foundation
+import Darwin
+
+/// Claude Desktop's local plan history is a usage history fallback. It is
+/// intentionally separate from Codex's store and never reads credentials,
+/// prompts, transcripts, or cookies.
+@MainActor
+final class ClaudeStore {
+    private struct SessionMetadata: Decodable {
+        let hostSessionId: String?
+        let name: String?
+        let startedAt: Double?
+        let updatedAt: Double?
+        let pid: Int64?
+        let entrypoint: String?
+        let status: String?
+    }
+    var onChange: ((DashboardSnapshot) -> Void)?
+    private(set) var snapshot = DashboardSnapshot(provider: .claude)
+    private var timer: Timer?
+    private var taskTimer: Timer?
+    private var policy = ClaudeRefreshPolicy()
+    private var refreshTask: Task<Void, Never>?
+    private var isActive = false
+    private let oauthClient = ClaudeOAuthUsageClient()
+    private let historyURL: URL
+
+    init(fileManager: FileManager = .default) {
+        historyURL = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Claude/plan-usage-history.json")
+    }
+
+    func start() {
+        loadHistoryOnly()
+    }
+
+    func setActive(_ active: Bool) {
+        guard active != isActive else { return }
+        isActive = active
+        timer?.invalidate()
+        timer = nil
+        taskTimer?.invalidate(); taskTimer = nil
+        guard active else { return }
+        refresh(reason: .foreground)
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refresh(reason: .periodic) }
+        }
+        taskTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in Task { @MainActor in self?.publishTasks() } }
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        taskTimer?.invalidate(); taskTimer = nil
+        refreshTask?.cancel()
+        if policy.inFlight { policy.finish(success: false, now: Date()) }
+    }
+
+    func refresh(force: Bool = false, allowAuthenticationUI: Bool = false, now: Date = Date(), reason: ClaudeRefreshPolicy.Reason = .foreground) {
+        guard isActive || force else { return }
+        let selectedReason: ClaudeRefreshPolicy.Reason = force ? .manual : reason
+        guard policy.begin(selectedReason, now: now) else { return }
+        if refreshTask == nil {
+            refreshTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let quotas = try await self.oauthClient.fetch(allowAuthenticationUI: allowAuthenticationUI)
+                    await MainActor.run { self.apply(quota: quotas, now: Date(), error: nil) }
+                } catch {
+                    await MainActor.run { self.applyHistoryFallback(now: Date(), error: error) }
+                }
+            }
+        }
+    }
+
+    private func apply(quota: [QuotaWindow], now: Date, error: String?) {
+        refreshTask = nil
+        policy.finish(success: error == nil, now: now)
+        snapshot = DashboardSnapshot(provider: .claude, tasks: allTasks(), quotas: quota, refreshedAt: now, refreshError: error, quotaSource: "Claude Code 登录账户")
+        onChange?(snapshot)
+    }
+
+    private func applyHistoryFallback(now: Date, error: Error) {
+        refreshTask = nil
+        let refreshFailure = failureMessage(error)
+        policy.finish(success: false, now: now)
+        do {
+            let data = try Data(contentsOf: historyURL, options: [.mappedIfSafe])
+            let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let object else { throw ClaudeError.invalidResponse }
+            let history = try ClaudeUsageParser.parseHistory(object, now: now)
+            if snapshot.quotas.isEmpty || history.sampledAt > (snapshot.refreshedAt ?? .distantPast) {
+                snapshot.quotas = history.windows
+                snapshot.refreshedAt = history.sampledAt
+                snapshot.quotaSource = "Claude 桌面历史"
+            }
+        } catch {
+            // Preserve the actionable authentication/network failure even when
+            // the optional history file is absent or malformed.
+        }
+        snapshot.refreshError = refreshFailure
+        snapshot.tasks = allTasks()
+        onChange?(snapshot)
+    }
+
+    private func loadHistoryOnly() {
+        let data = try? Data(contentsOf: historyURL, options: [.mappedIfSafe])
+        let object = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let history = object.flatMap { try? ClaudeUsageParser.parseHistory($0, now: Date()) }
+        snapshot = DashboardSnapshot(provider: .claude, tasks: allTasks(), quotas: history?.windows ?? [], refreshedAt: history?.sampledAt, refreshError: history == nil ? "Claude 用量历史暂不可用" : "Claude 用量历史（可能已过期）", quotaSource: history == nil ? nil : "Claude 桌面历史")
+        onChange?(snapshot)
+    }
+
+    func publishTasks() { snapshot.tasks = allTasks(); onChange?(snapshot) }
+
+
+    private func scanSessions() -> [TaskSnapshot] {
+        let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions", isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return [] }
+        let now = Date()
+        return files.compactMap { url -> TaskSnapshot? in
+            guard url.lastPathComponent.range(of: #"^[0-9]+\.json$"#, options: .regularExpression) != nil,
+                  let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let size = attributes[.size] as? NSNumber, size.intValue <= 64 * 1024,
+                  let data = try? Data(contentsOf: url), let metadata = try? JSONDecoder().decode(SessionMetadata.self, from: data), metadata.entrypoint == "claude-desktop",
+                  let pidValue = metadata.pid, pidValue > 0, pidValue <= Int64(Int32.max), kill(Int32(pidValue), 0) == 0,
+                  let sessionID = metadata.hostSessionId, sessionID.hasPrefix("local_"), UUID(uuidString: String(sessionID.dropFirst(6))) != nil else { return nil }
+            let title = metadata.name.flatMap { safeTitle($0) } ?? "Claude Code"
+            let timestamp = metadata.startedAt ?? now.timeIntervalSince1970 * 1000
+            let date = Date(timeIntervalSince1970: timestamp > 2_000_000_000 ? timestamp / 1000 : timestamp)
+            guard let phase = ClaudeTaskStatus.phase(for: metadata.status) else { return nil }
+            let updated = metadata.updatedAt.flatMap { Date(timeIntervalSince1970: $0 > 2_000_000_000 ? $0 / 1000 : $0) } ?? date
+            return TaskSnapshot(provider: .claude, sessionID: sessionID, title: title, workspaceName: "Claude Code", category: .code, route: TaskRoute(provider: .claude, identifier: sessionID), phase: phase, toolName: nil, startedAt: date, updatedAt: updated)
+        }.sorted { $0.updatedAt > $1.updatedAt }.prefix(12).map { $0 }
+    }
+
+    private func allTasks() -> [TaskSnapshot] {
+        Array(scanSessions().sorted { $0.updatedAt > $1.updatedAt }.prefix(12))
+    }
+
+    private func safeTitle(_ title: String) -> String? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 80, !trimmed.contains("\n") else { return nil }
+        return trimmed
+    }
+
+    private func failureMessage(_ error: Error) -> String {
+        if let localized = (error as? LocalizedError)?.errorDescription { return localized }
+        if (error as? CocoaError)?.code == .fileNoSuchFile { return "Claude 用量暂不可用（未找到本地用量历史）" }
+        return "Claude 用量暂不可用（数据格式或读取失败）"
+    }
+
+    enum ClaudeError: Error { case invalidResponse }
+}

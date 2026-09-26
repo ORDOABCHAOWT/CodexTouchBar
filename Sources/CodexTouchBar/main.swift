@@ -15,6 +15,45 @@ if CommandLine.arguments.contains("--media-capability-check") {
     exit(CTBMediaRemoteAvailable() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
+if CommandLine.arguments.contains("--claude-task-check") {
+    DispatchQueue.global().asyncAfter(deadline: .now() + 12) {
+        print("Claude 任务检查超时")
+        exit(EXIT_FAILURE)
+    }
+    Task { @MainActor in
+        let monitor = ClaudeSidebarMonitor()
+        let tasks = monitor.scan()
+        print("辅助功能：\(monitor.isTrusted ? "已授权" : "未授权")")
+        print("窗口/侧栏节点/标题行：\(monitor.diagnosticCounts.windows)/\(monitor.diagnosticCounts.sidebarNodes)/\(monitor.diagnosticCounts.titledRows)")
+        print("活动侧栏任务：\(tasks.count)")
+        print("状态：\(tasks.map { $0.phase.rawValue }.joined(separator: ","))")
+        exit(monitor.isTrusted ? EXIT_SUCCESS : EXIT_FAILURE)
+    }
+    dispatchMain()
+}
+
+if CommandLine.arguments.contains("--claude-usage-check") {
+    let allowPrompt = CommandLine.arguments.contains("--allow-keychain-prompt")
+    DispatchQueue.global().asyncAfter(deadline: .now() + 15) {
+        print("Claude 用量检查超时")
+        exit(EXIT_FAILURE)
+    }
+    Task.detached {
+        do {
+            let windows = try await ClaudeOAuthUsageClient().fetch(allowAuthenticationUI: allowPrompt) { stage in
+                print(stage); fflush(stdout)
+            }
+            guard !windows.isEmpty else { print("Claude 用量检查失败"); exit(EXIT_FAILURE) }
+            print(windows.map { "\($0.kind.rawValue)=\($0.remainingPercent)%" }.joined(separator: " "))
+            exit(EXIT_SUCCESS)
+        } catch {
+            print((error as? LocalizedError)?.errorDescription ?? "Claude 用量检查失败")
+            exit(EXIT_FAILURE)
+        }
+    }
+    dispatchMain()
+}
+
 if CommandLine.arguments.contains("--activity-probe") {
     let rows = CTBReadRecentCodexActivity(120)
     let titledRows = rows.filter { row in

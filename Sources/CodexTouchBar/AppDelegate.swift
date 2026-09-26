@@ -4,29 +4,52 @@ import CodexTouchBarCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = StatusStore()
-    private let socketServer = HookSocketServer()
-    private let codexClient = CodexAppServerClient()
-    private let activityMonitor = CodexActivityMonitor()
+    private var socketServer: HookSocketServer?
+    private var codexClient: CodexAppServerClient?
+    private var activityMonitor: CodexActivityMonitor?
+    private let claudeStore = ClaudeStore()
+    private let claudeSidebarMonitor = ClaudeSidebarMonitor()
     private let touchBarController = TouchBarController()
     private var previewController: PreviewWindowController?
     private var statusItem: NSStatusItem?
     private var connectionMenuItem: NSMenuItem?
+    private var codexSnapshot = DashboardSnapshot(provider: .codex)
+    private var claudeSnapshot = DashboardSnapshot(provider: .claude)
+    private var previewOnly = false
+    private var pinnedProvider: TaskProvider?
+    private var lastSupportedProvider: TaskProvider = .codex
+    private var currentProvider: TaskProvider? {
+        let id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        if ["com.openai.codex", "com.openai.chatgpt"].contains(id) { return .codex }
+        if ["com.anthropic.claudefordesktop", "com.anthropic.claude"].contains(id) { return .claude }
+        return nil
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureStatusItem()
-        bindData()
+        previewOnly = CommandLine.arguments.contains("--preview-only")
+        pinnedProvider = argumentValue(after: "--provider").flatMap { TaskProvider(rawValue: $0) }
 
-        do {
-            try socketServer.start { [weak self] packet in
-                Task { @MainActor in self?.store.accept(packet) }
+        if !previewOnly {
+            socketServer = HookSocketServer()
+            codexClient = CodexAppServerClient()
+            activityMonitor = CodexActivityMonitor()
+        }
+        bindData()
+        if !previewOnly {
+            do {
+                try socketServer?.start { [weak self] packet in
+                    Task { @MainActor in self?.store.accept(packet) }
+                }
+            } catch {
+                store.setQuotaError("任务连接启动失败")
             }
-        } catch {
-            store.setQuotaError("任务连接启动失败")
+            codexClient?.start(); activityMonitor?.start()
         }
 
-        touchBarController.install()
-        codexClient.start()
-        activityMonitor.start()
+        if !previewOnly { touchBarController.install() }
+        claudeStore.start()
+        foregroundChanged(currentProvider)
         store.onChange?(store.snapshot)
 
         if CommandLine.arguments.contains("--preview") || !touchBarController.privateAPIAvailable {
@@ -48,21 +71,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        codexClient.stop()
-        activityMonitor.stop()
-        socketServer.stop()
-        touchBarController.uninstall()
+        codexClient?.stop(); activityMonitor?.stop()
+        claudeStore.stop()
+        socketServer?.stop()
+        if !previewOnly { touchBarController.uninstall() }
     }
 
     private func bindData() {
         store.onChange = { [weak self] snapshot in
-            self?.touchBarController.update(snapshot)
-            self?.previewController?.update(snapshot)
+            guard let self else { return }
+            self.codexSnapshot = snapshot
+            self.updateVisibleSnapshot()
         }
-        codexClient.onQuotas = { [weak self] windows in self?.store.updateQuotas(windows) }
-        codexClient.onThreadTitles = { [weak self] titles in self?.store.updateThreadTitles(titles) }
-        codexClient.onError = { [weak self] message in self?.store.setQuotaError(message) }
-        activityMonitor.onTasks = { [weak self] tasks in self?.store.updateDetectedTasks(tasks) }
+        codexClient?.onQuotas = { [weak self] windows in self?.store.updateQuotas(windows) }
+        codexClient?.onThreadTitles = { [weak self] titles in self?.store.updateThreadTitles(titles) }
+        codexClient?.onError = { [weak self] message in self?.store.setQuotaError(message) }
+        activityMonitor?.onTasks = { [weak self] tasks in self?.store.updateDetectedTasks(tasks) }
+        claudeStore.onChange = { [weak self] snapshot in
+            guard let self else { return }
+            self.claudeSnapshot = snapshot
+            if self.currentProvider == .claude {
+                let sidebar = self.claudeSidebarMonitor.scan()
+                var seen = Set<String>()
+                self.claudeSnapshot.tasks = Array((sidebar + snapshot.tasks).filter { seen.insert($0.route.identifier).inserted }.prefix(12))
+                self.claudeSnapshot.taskError = self.claudeSidebarMonitor.permissionMessage
+            }
+            self.updateVisibleSnapshot()
+        }
+        touchBarController.onFrontmostProviderChanged = { [weak self] provider in
+            self?.foregroundChanged(provider)
+        }
+        touchBarController.onTaskRouteSelected = { [weak self] route in
+            self?.handleRoute(route)
+        }
+        touchBarController.onRefreshRequested = { [weak self] in self?.claudeStore.refresh(force: true, allowAuthenticationUI: true) }
+    }
+
+    private func foregroundChanged(_ provider: TaskProvider?) {
+        if let provider { lastSupportedProvider = provider }
+        claudeStore.setActive(!previewOnly && provider == .claude)
+        if provider == .claude { claudeStore.publishTasks() }
+        updateVisibleSnapshot()
+    }
+
+    private func handleRoute(_ route: TaskRoute) {
+        guard route.supported else { routeFailed(route); return }
+        let success = route.requiresAccessibility ? claudeSidebarMonitor.press(identifier: route.identifier) : ThreadNavigator.open(route: route)
+        if !success && route.provider == .codex {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                if !ThreadNavigator.open(route: route) { self?.routeFailed(route) }
+            }
+        } else if !success {
+            routeFailed(route)
+        }
+    }
+    private func routeFailed(_ route: TaskRoute) {
+        NSSound.beep()
+        if route.provider == .claude { claudeSnapshot.taskError = "Claude 任务导航暂不可用，请重新打开侧栏" }
+        else { codexSnapshot.taskError = "Codex 任务导航暂不可用" }
+        updateVisibleSnapshot()
+    }
+
+    private func updateVisibleSnapshot() {
+        // Opening our preview must not replace its last provider with Codex.
+        let physical = (currentProvider ?? lastSupportedProvider) == .claude ? claudeSnapshot : codexSnapshot
+        let preview = (pinnedProvider ?? lastSupportedProvider) == .claude ? claudeSnapshot : codexSnapshot
+        touchBarController.update(physical)
+        previewController?.update(preview)
     }
 
     private func configureStatusItem() {
@@ -80,6 +155,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(present)
         menu.addItem(.separator())
 
+        let claudeAccess = NSMenuItem(title: "启用 Claude 侧栏任务访问", action: #selector(requestClaudeAccess), keyEquivalent: "")
+        claudeAccess.target = self
+        menu.addItem(claudeAccess)
+        let refreshClaude = NSMenuItem(title: "刷新 Claude 用量", action: #selector(refreshClaudeUsage), keyEquivalent: "")
+        refreshClaude.target = self; menu.addItem(refreshClaude)
+        let connectClaude = NSMenuItem(title: "连接 Claude 用量…", action: #selector(connectClaudeUsage), keyEquivalent: "")
+        connectClaude.target = self; menu.addItem(connectClaude)
+
         let connection = NSMenuItem(title: "", action: #selector(toggleConnection), keyEquivalent: "")
         connection.target = self
         menu.addItem(connection)
@@ -93,6 +176,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = menu
         statusItem = item
     }
+
+    @objc private func requestClaudeAccess() {
+        claudeSidebarMonitor.requestPermission()
+        if let message = claudeSidebarMonitor.permissionMessage { showConnectionAlert(success: false, message: message) }
+    }
+    @objc private func refreshClaudeUsage() { claudeStore.refresh(force: true, allowAuthenticationUI: true) }
+    @objc private func connectClaudeUsage() { claudeStore.refresh(force: true, allowAuthenticationUI: true) }
 
     @objc private func showPreview() {
         showPreviewWindow()
@@ -145,7 +235,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func ensurePreviewController() -> PreviewWindowController {
         if let previewController { return previewController }
         let controller = PreviewWindowController()
-        controller.update(store.snapshot)
+        controller.onTaskRouteSelected = { [weak self] route in
+            self?.handleRoute(route)
+        }
+        controller.onRefreshRequested = { [weak self] in self?.claudeStore.refresh(force: true, allowAuthenticationUI: true) }
+        controller.update((pinnedProvider ?? lastSupportedProvider) == .claude ? claudeSnapshot : codexSnapshot)
         previewController = controller
         return controller
     }

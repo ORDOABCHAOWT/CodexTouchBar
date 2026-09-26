@@ -5,10 +5,12 @@ import CodexTouchBarCore
 final class PreviewWindowController: NSWindowController {
     private let dashboardView = DashboardStripView(frame: .zero)
     private let statusLabel = NSTextField(labelWithString: "")
+    var onTaskRouteSelected: ((TaskRoute) -> Void)?
+    var onRefreshRequested: (() -> Void)?
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 124),
+            contentRect: NSRect(x: 0, y: 0, width: 1040, height: 164),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -20,6 +22,10 @@ final class PreviewWindowController: NSWindowController {
         dashboardView.onTaskSelected = { sessionID in
             _ = ThreadNavigator.open(sessionID: sessionID)
         }
+        dashboardView.onTaskRouteSelected = { [weak self] route in
+            if let handler = self?.onTaskRouteSelected { handler(route) } else { _ = ThreadNavigator.open(route: route) }
+        }
+        dashboardView.onRefreshRequested = { [weak self] in self?.onRefreshRequested?() }
         buildContent()
     }
 
@@ -28,15 +34,18 @@ final class PreviewWindowController: NSWindowController {
     func update(_ snapshot: DashboardSnapshot) {
         dashboardView.update(snapshot: snapshot)
         let taskCount = snapshot.tasks.count
-        let quotaState: String
-        if let error = snapshot.quotaError {
-            quotaState = error
-        } else if snapshot.quotas.isEmpty {
-            quotaState = "正在读取额度"
-        } else {
-            quotaState = "额度连接正常"
+        let provider = snapshot.provider == .claude ? "Claude" : "Codex"
+        window?.title = "CodexTouchBar · \(provider) 预览"
+        var lines = ["\(provider) · 显示 \(min(6, taskCount))/\(taskCount) 个任务 · \(snapshot.quotas.isEmpty ? "用量不可用" : "剩余额度")"]
+        var provenance: [String] = []
+        if let source = snapshot.quotaSource { provenance.append("来源：\(source)") }
+        if let sampled = snapshot.refreshedAt {
+            provenance.append("数据时间：\(sampled.formatted(date: .abbreviated, time: .standard))")
         }
-        statusLabel.stringValue = "\(taskCount) 个活动任务 · \(quotaState)"
+        if !provenance.isEmpty { lines.append(provenance.joined(separator: " · ")) }
+        if let error = snapshot.refreshError ?? snapshot.quotaError { lines.append(error) }
+        if let error = snapshot.taskError { lines.append(error) }
+        statusLabel.stringValue = lines.joined(separator: "\n")
     }
 
     func show() {
@@ -76,8 +85,12 @@ final class PreviewWindowController: NSWindowController {
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.textColor = NSColor.white.withAlphaComponent(0.72)
         statusLabel.font = .systemFont(ofSize: 11)
+        statusLabel.maximumNumberOfLines = 5
+        statusLabel.lineBreakMode = .byWordWrapping
+        statusLabel.cell?.wraps = true
+        statusLabel.cell?.usesSingleLineMode = false
 
-        let note = NSTextField(labelWithString: "预览与实体 Touch Bar 共用同一套视图；颜色会随任务阶段自动变化。")
+        let note = NSTextField(labelWithString: "点按任务切换窗口；Claude 额度可点按刷新。标记“旧”的数据可能已过期。")
         note.translatesAutoresizingMaskIntoConstraints = false
         note.textColor = NSColor.white.withAlphaComponent(0.44)
         note.font = .systemFont(ofSize: 10)
@@ -94,6 +107,7 @@ final class PreviewWindowController: NSWindowController {
             dashboardView.trailingAnchor.constraint(equalTo: touchBarBackdrop.trailingAnchor, constant: -6),
             dashboardView.centerYAnchor.constraint(equalTo: touchBarBackdrop.centerYAnchor),
             statusLabel.leadingAnchor.constraint(equalTo: touchBarBackdrop.leadingAnchor, constant: 2),
+            statusLabel.trailingAnchor.constraint(equalTo: touchBarBackdrop.trailingAnchor, constant: -2),
             statusLabel.topAnchor.constraint(equalTo: touchBarBackdrop.bottomAnchor, constant: 12),
             note.leadingAnchor.constraint(equalTo: statusLabel.leadingAnchor),
             note.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 5),

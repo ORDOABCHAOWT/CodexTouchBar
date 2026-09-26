@@ -31,6 +31,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("QuartzCore"),
+                .linkedFramework("Security"),
             ]
         ),
         .executableTarget(

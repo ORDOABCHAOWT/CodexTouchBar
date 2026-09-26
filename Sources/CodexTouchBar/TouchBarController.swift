@@ -11,7 +11,12 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     private var trayItem: NSCustomTouchBarItem?
     private var workspaceObserver: NSObjectProtocol?
     private var isInstalled = false
+    private(set) var lastSupportedProvider: TaskProvider = .codex
     private let codexBundleIdentifiers: Set<String> = ["com.openai.codex", "com.openai.chatgpt"]
+    private let claudeBundleIdentifiers: Set<String> = ["com.anthropic.claudefordesktop", "com.anthropic.claude"]
+    var onFrontmostProviderChanged: ((TaskProvider?) -> Void)?
+    var onTaskRouteSelected: ((TaskRoute) -> Void)?
+    var onRefreshRequested: (() -> Void)?
 
     private(set) var privateAPIAvailable = false
 
@@ -26,6 +31,12 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
                 _ = ThreadNavigator.open(sessionID: sessionID)
             }
         }
+        dashboardView.onTaskRouteSelected = { [weak self] route in
+            if let handler = self?.onTaskRouteSelected { handler(route); return }
+            guard route.supported else { return }
+            _ = ThreadNavigator.open(route: route)
+        }
+        dashboardView.onRefreshRequested = { [weak self] in self?.onRefreshRequested?() }
         touchBar.delegate = self
         touchBar.defaultItemIdentifiers = [dashboardIdentifier]
         touchBar.principalItemIdentifier = dashboardIdentifier
@@ -74,7 +85,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     }
 
     @objc func present() {
-        guard privateAPIAvailable, isInstalled, isCodexFrontmost else { return }
+        guard privateAPIAvailable, isInstalled, frontmostProvider != nil else { return }
         CTBSetControlStripPresence(trayIdentifier.rawValue, true)
         _ = CTBPresentSystemModalTouchBar(touchBar, trayIdentifier.rawValue)
     }
@@ -84,9 +95,19 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         return codexBundleIdentifiers.contains(bundleIdentifier)
     }
 
+    private var frontmostProvider: TaskProvider? {
+        guard let bundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return nil }
+        if codexBundleIdentifiers.contains(bundleIdentifier) { return .codex }
+        if claudeBundleIdentifiers.contains(bundleIdentifier) { return .claude }
+        return nil
+    }
+
     private func updateForFrontmostApplication() {
+        let provider = frontmostProvider
+        if let provider { lastSupportedProvider = provider }
+        onFrontmostProviderChanged?(provider)
         guard privateAPIAvailable, isInstalled else { return }
-        if isCodexFrontmost {
+        if provider != nil {
             present()
         } else {
             CTBDismissSystemModalTouchBar(touchBar)

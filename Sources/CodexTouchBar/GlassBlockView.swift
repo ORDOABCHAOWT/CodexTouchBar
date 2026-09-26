@@ -81,7 +81,7 @@ final class GlassBlockView: NSButton {
         didSet {
             target = self
             action = #selector(handleTap)
-            toolTip = onTap == nil ? nil : "在 Codex 中打开此任务"
+            toolTip = onTap == nil ? nil : "打开此任务"
             setAccessibilityRole(onTap == nil ? .group : .button)
         }
     }
@@ -214,6 +214,8 @@ final class MediaButtonView: NSButton {
 
 final class DashboardStripView: NSView {
     var onTaskSelected: ((String) -> Void)?
+    var onTaskRouteSelected: ((TaskRoute) -> Void)?
+    var onRefreshRequested: (() -> Void)?
     private let rootStack = NSStackView()
     private let leftMediaStack = NSStackView()
     private let statusStack = NSStackView()
@@ -279,7 +281,7 @@ final class DashboardStripView: NSView {
         quotaStack.distribution = .fill
         quotaStack.setContentHuggingPriority(.required, for: .horizontal)
         quotaStack.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: 181)
+        let preferredQuotaWidth = quotaStack.widthAnchor.constraint(equalToConstant: 211)
         preferredQuotaWidth.priority = .defaultHigh
         // Use the native 13-inch Touch Bar width as a preferred size. The
         // constraint is intentionally high-but-breakable: on a narrower bar
@@ -355,7 +357,7 @@ final class DashboardStripView: NSView {
         }
 
         let visibleTasks = Array(snapshot.tasks.prefix(6))
-        let layoutKey = visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map(\.sessionID)
+        let layoutKey = [snapshot.provider.rawValue] + (visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map { "\($0.route.provider.rawValue)|\($0.route.identifier)|\($0.route.category.rawValue)|\($0.route.requiresAccessibility)|\($0.route.supported)" })
         if statusLayoutKey != layoutKey {
             [taskStack, quotaStack].forEach { stack in
                 stack.arrangedSubviews.forEach { view in
@@ -368,12 +370,19 @@ final class DashboardStripView: NSView {
 
             if visibleTasks.isEmpty {
                 let block = GlassBlockView()
-                block.set(text: "Codex · 等待任务", accent: .gray)
+                let label = "等待任务"
+                block.set(text: label, accent: snapshot.refreshError == nil ? .gray : .orange)
                 taskStack.addArrangedSubview(block)
             } else {
                 for task in visibleTasks {
                     let block = GlassBlockView()
-                    block.onTap = { [weak self] in self?.onTaskSelected?(task.sessionID) }
+                    block.onTap = { [weak self] in
+                        if let onTaskRouteSelected = self?.onTaskRouteSelected {
+                            onTaskRouteSelected(task.route)
+                        } else {
+                            self?.onTaskSelected?(task.sessionID)
+                        }
+                    }
                     taskBlocks.append(block)
                     taskStack.addArrangedSubview(block)
                 }
@@ -386,10 +395,10 @@ final class DashboardStripView: NSView {
         for (task, block) in zip(visibleTasks, taskBlocks) {
             let elapsed = Self.elapsedString(since: task.startedAt)
             let compactTitle = String(task.title.prefix(80))
-            block.set(
-                text: "\(compactTitle) · \(Self.phaseGlyph(task.phase)) \(elapsed)",
-                accent: .forPhase(task.phase)
-            )
+            let text = task.provider == .claude ? compactTitle : "\(compactTitle) · \(Self.phaseGlyph(task.phase)) \(elapsed)"
+            block.set(text: text, accent: .forPhase(task.phase))
+            block.toolTip = "\(task.title)\n\(task.workspaceName) · 点按切换"
+            block.setAccessibilityLabel(block.toolTip)
         }
 
         let quotaByKind = Dictionary(uniqueKeysWithValues: snapshot.quotas.map { ($0.kind, $0) })
@@ -401,7 +410,7 @@ final class DashboardStripView: NSView {
     @discardableResult
     private func addQuotaBlock(kind: QuotaKind, accent: GlassAccent) -> GlassBlockView {
         let block = GlassBlockView()
-        let width = block.widthAnchor.constraint(equalToConstant: 88)
+        let width = block.widthAnchor.constraint(equalToConstant: kind == .fiveHour ? 108 : 98)
         width.priority = .defaultHigh
         NSLayoutConstraint.activate([width])
         quotaStack.addArrangedSubview(block)
@@ -412,8 +421,22 @@ final class DashboardStripView: NSView {
     private func updateQuotaBlock(_ block: GlassBlockView?, kind: QuotaKind, window: QuotaWindow?, accent: GlassAccent) {
         guard let block else { return }
         let prefix = kind == .fiveHour ? "5h" : "周"
-        let value = window.map { "\(prefix) \($0.remainingPercent)%" } ?? "\(prefix) …"
-        block.set(text: value, accent: accent)
+        let isClaude = snapshot.provider == .claude
+        let value = window.map { isClaude ? "\(prefix)余\($0.remainingPercent)%" : "\(prefix) \($0.remainingPercent)%" } ?? "\(prefix) …"
+        let age = snapshot.refreshedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        let isStale = isClaude && (snapshot.refreshError != nil || snapshot.quotaSource == "Claude 桌面历史" || age > 120)
+        let suffix = isStale && window != nil ? "·旧" : ""
+        block.set(text: value + suffix, accent: accent)
+        block.onTap = isClaude ? { [weak self] in self?.onRefreshRequested?() } : nil
+        var details = ["\(isClaude ? "Claude" : "Codex") · \(kind.label)剩余额度"]
+        if let source = snapshot.quotaSource { details.append("来源：\(source)") }
+        if let sampled = snapshot.refreshedAt { details.append("数据时间：\(sampled.formatted(date: .abbreviated, time: .standard))") }
+        if let reset = window?.resetsAt { details.append("重置：\(reset.formatted(date: .abbreviated, time: .shortened))") }
+        if let error = snapshot.refreshError ?? snapshot.quotaError { details.append(error) }
+        if isStale { details.append("旧数据，可能已过期") }
+        if isClaude { details.append("点按刷新用量") }
+        block.toolTip = details.joined(separator: "\n")
+        block.setAccessibilityLabel(([value + suffix] + details).joined(separator: " · "))
     }
 
     @objc private func previousTrack() {
