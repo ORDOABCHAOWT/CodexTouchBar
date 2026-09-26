@@ -3,6 +3,20 @@ import CodexTouchBarCore
 import Foundation
 import TouchBarPrivateBridge
 
+if CommandLine.arguments.contains("--resident-state-check") {
+    let requestID = UUID().uuidString
+    let center = DistributedNotificationCenter.default()
+    let observer = center.addObserver(forName: Notification.Name("com.whitney.CodexTouchBar.state-response"), object: requestID, queue: .main) { note in
+        if let info = note.userInfo, let data = try? JSONSerialization.data(withJSONObject: info, options: [.sortedKeys]), let text = String(data: data, encoding: .utf8) { print(text) }
+        exit(EXIT_SUCCESS)
+    }
+    center.postNotificationName(Notification.Name("com.whitney.CodexTouchBar.state-request"), object: requestID, userInfo: nil, deliverImmediately: true)
+    RunLoop.current.run(until: Date().addingTimeInterval(8))
+    center.removeObserver(observer)
+    print("常驻进程未响应")
+    exit(EXIT_FAILURE)
+}
+
 if let variantValue = CommandLine.arguments.firstIndex(of: "--variant").flatMap({ index in
     let next = CommandLine.arguments.index(after: index)
     return next < CommandLine.arguments.endIndex ? Int(CommandLine.arguments[next]) : nil
@@ -21,13 +35,18 @@ if CommandLine.arguments.contains("--claude-task-check") {
         exit(EXIT_FAILURE)
     }
     Task { @MainActor in
+        // Counts and phases only; titles stay out of diagnostic output.
+        let records = ClaudeSessionMonitor.liveRecords()
+        let active = records.compactMap(\.phase)
+        print("Code 会话登记：\(records.count) 个打开，\(active.count) 个活动")
+        print("登记状态：\(active.map(\.rawValue).joined(separator: ","))")
         let monitor = ClaudeSidebarMonitor()
         let tasks = monitor.scan()
         print("辅助功能：\(monitor.isTrusted ? "已授权" : "未授权")")
         print("窗口/侧栏节点/标题行：\(monitor.diagnosticCounts.windows)/\(monitor.diagnosticCounts.sidebarNodes)/\(monitor.diagnosticCounts.titledRows)")
         print("活动侧栏任务：\(tasks.count)")
         print("状态：\(tasks.map { $0.phase.rawValue }.joined(separator: ","))")
-        exit(monitor.isTrusted ? EXIT_SUCCESS : EXIT_FAILURE)
+        exit(monitor.isTrusted || !records.isEmpty ? EXIT_SUCCESS : EXIT_FAILURE)
     }
     dispatchMain()
 }

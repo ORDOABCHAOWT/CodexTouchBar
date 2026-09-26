@@ -19,6 +19,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     var onRefreshRequested: (() -> Void)?
 
     private(set) var privateAPIAvailable = false
+    var visibleTaskCount: Int { dashboardView.visibleTaskCount }
 
     override init() {
         super.init()

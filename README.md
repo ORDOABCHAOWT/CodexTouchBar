@@ -1,6 +1,6 @@
 # CodexTouchBar
 
-A lightweight native macOS companion that shows Codex or Claude Desktop tasks and remaining quota as colored glass blocks on MacBook Pro Touch Bar models. Version 0.2.4 adds Claude support alongside the existing Codex integration.
+A lightweight native macOS companion that shows Codex or Claude Desktop tasks and remaining quota as colored glass blocks on MacBook Pro Touch Bar models. Version 0.2.6 adds Claude support alongside the existing Codex integration.
 
 ## Features
 
@@ -25,9 +25,11 @@ The same app supports ordinary chats, Claude Code, and Cowork. No separate compa
 
 1. Sign into Claude Code with the same account used in Claude Desktop. If the existing login is expired, run `/login` in Claude Code yourself.
 2. In the CodexTouchBar menu, choose **连接 Claude 用量…**. Approve the macOS Keychain prompt if shown. Automatic polling never opens an authentication prompt.
-3. Choose **启用 Claude 侧栏任务访问**, then enable CodexTouchBar in macOS **Privacy & Security → Accessibility** to read and press ordinary chat/Cowork sidebar rows. Keep the Claude sidebar open.
+3. Optional: choose **启用 Claude 侧栏任务访问**, then enable CodexTouchBar in macOS **Privacy & Security → Accessibility** to also read and press ordinary chat/Cowork sidebar rows. Keep the Claude sidebar open. Claude Code sessions need no permission.
 
-While Claude is foreground, tasks refresh every 5 seconds. Usage refreshes every 60 seconds; returning to Claude requests a refresh if the last attempt was at least 30 seconds ago. Automatic requests pause in the background. Tap either Claude quota block for an immediate manual refresh. Requests cannot overlap; failures back off from 60 seconds to at most 15 minutes.
+The local bundle is ad-hoc signed. Replacing it may invalidate its Accessibility approval even if Settings still shows the old switch enabled. Re-register the installed app in Accessibility when needed. Missing permission displays **需要辅助功能权限**, rather than claiming no task is running. The `--resident-state-check` diagnostic queries the running companion and returns only permission/provider state and counts; a separate CLI scan may inherit a different responsible process’s permission.
+
+Claude Code sessions refresh every second. While Claude is foreground, sidebar rows refresh every 5 seconds. Usage refreshes every 60 seconds; returning to Claude requests a refresh if the last attempt was at least 30 seconds ago. Automatic requests pause in the background. Tap either Claude quota block for an immediate manual refresh. Requests cannot overlap; failures back off from 60 seconds to at most 15 minutes.
 
 Quota blocks show **remaining** percentages (`余`), not the used percentages shown in Claude's settings. The network source is Claude Code's signed-in account, which the companion cannot independently prove matches the Desktop account. Its scoped OAuth token is read from the existing Keychain item only into memory and sent only to Anthropic's usage endpoint; redirects, cookie storage and disk caching are disabled. This endpoint and Claude's local metadata formats are internal interfaces observed in the installed Desktop app, so future Claude updates may require compatibility fixes.
 
@@ -35,7 +37,11 @@ If network usage is unavailable, the app can show Claude Desktop's local plan hi
 
 Claude task snapshots continue to read the last selected Claude provider while the status menu or preview temporarily holds focus.
 
-The bar displays up to six tasks. Sidebar rows take priority and use their live Accessibility elements, including rows with duplicate titles. Only the currently exposed sidebar list is available; it is not an inventory of every historical chat. Without Accessibility, live desktop Code session registrations provide a fallback. Only explicit running, tool-use, waiting-for-input, or approval states are included. Idle, completed, unknown, and historical Cowork records are excluded. When no active task exists, the task area displays **等待任务**. The app reads titles, IDs and status metadata, not message bodies or transcript files, and never writes task data or credentials to disk.
+The bar displays up to six tasks. Claude Code sessions come first, from the live registration Claude Code keeps for each running session (`~/.claude/sessions/<pid>.json`), so they need no Accessibility permission. Each block shows the session's sidebar title, its phase and the time since the task started, like a Codex task: `busy` is 思 (thinking), `shell` is 工 (running a command), and `waiting` is 批 for a permission prompt or 等 for a question. A finished turn shows 成 for 12 seconds; idle sessions are not shown. Registrations whose process has exited, or whose pid was reused by another process, are ignored. Tapping a block opens that exact session through Claude Desktop's own `claude://code/continue?session=local_…` link.
+
+Sidebar rows add ordinary chats and Cowork when Accessibility is granted, using their live Accessibility elements; a row whose title matches a Claude Code session is the same task and is not shown twice. Only the currently exposed sidebar list is available; it is not an inventory of every historical chat. Sidebar rows have no reliable start time, so they show the title only. Only explicit running, tool-use, waiting-for-input, or approval states are included; idle, completed, unknown, and historical Cowork records are excluded. When no active task exists, the task area displays **等待任务**.
+
+From each registration the app decodes only the pid, desktop session ID, title, status and times. It never opens the sibling `.key` files or reads working directories, sockets, message bodies or transcript files, and never writes task data or credentials to disk.
 
 For safe local preview alongside the installed app:
 

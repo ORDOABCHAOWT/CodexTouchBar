@@ -151,6 +151,72 @@ private func checkClaudeTaskStatuses() throws {
     try expect(ClaudeTaskStatus.phase(forRowLabel: "Running another task", title: "清理 Claude 缓存和文件") == nil, "row status crossed titles")
 }
 
+private func checkClaudeSessionRegistry() throws {
+    let hostID = "local_31d5ae3e-0bcc-4184-857a-b1b797259fe5"
+    func registration(_ overrides: [String: Any?]) -> Data {
+        var object: [String: Any] = [
+            "pid": 73915,
+            "sessionId": "da911531-5409-4717-a737-c10a798bbe54",
+            "cwd": "/Users/whitney/Secret Project",
+            "messagingSocketPath": "/private/tmp/secret.sock",
+            "kind": "interactive",
+            "entrypoint": "claude-desktop",
+            "hostSessionId": hostID,
+            "name": "日语学习应用 UI/交互优化",
+            "status": "busy",
+            "statusUpdatedAt": 1_790_405_336_222,
+            "procStart": "Sat Sep 26 06:48:54 2026",
+        ]
+        for (key, value) in overrides { object[key] = value }
+        return (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
+    }
+
+    let busy = ClaudeSessionRegistry.parse(registration([:]))
+    try expect(busy?.pid == 73915 && busy?.hostSessionID == hostID, "desktop registration was not decoded")
+    try expect(busy?.title == "日语学习应用 UI/交互优化", "registry title was not kept")
+    try expect(busy?.phase == .thinking, "busy registry status must count as running")
+    try expect(busy?.statusChangedAt == Date(timeIntervalSince1970: 1_790_405_336.222), "status time was not read as milliseconds")
+    try expect(busy?.processStartedAt == Date(timeIntervalSince1970: 1_790_405_334), "procStart was not read as UTC")
+    try expect(ClaudeSessionRegistry.parse(registration(["procStart": "Sat Sep  6 06:48:54 2026"]))?.processStartedAt != nil, "space-padded procStart was rejected")
+
+    let phases: [(String?, String?, TaskPhase?)] = [
+        ("busy", nil, .thinking), ("shell", nil, .usingTool),
+        ("waiting", "permission prompt", .waitingApproval), ("waiting", "sandbox request", .waitingApproval),
+        ("waiting", "input needed", .waitingInput), ("waiting", "dialog open", .waitingInput), ("waiting", nil, .waitingInput),
+        ("idle", nil, nil), ("running", nil, nil), (nil, nil, nil),
+    ]
+    for (status, waitingFor, expected) in phases {
+        try expect(ClaudeSessionRegistry.phase(status: status, waitingFor: waitingFor) == expected, "registry phase failed for \(status ?? "nil")/\(waitingFor ?? "nil")")
+    }
+
+    let rejected: [(String, [String: Any?])] = [
+        ("CLI session", ["entrypoint": "cli"]),
+        ("background session", ["kind": "bg"]),
+        ("missing desktop ID", ["hostSessionId": nil]),
+        ("malformed desktop ID", ["hostSessionId": "local_../../x"]),
+        ("cloud session ID", ["hostSessionId": "session_abc"]),
+        ("boolean pid", ["pid": true]),
+        ("fractional pid", ["pid": 12.5]),
+        ("negative pid", ["pid": -4]),
+        ("string pid", ["pid": "73915"]),
+    ]
+    for (label, overrides) in rejected {
+        try expect(ClaudeSessionRegistry.parse(registration(overrides)) == nil, "registry accepted \(label)")
+    }
+    try expect(ClaudeSessionRegistry.parse(Data("not json".utf8)) == nil, "registry accepted invalid JSON")
+    try expect(ClaudeSessionRegistry.parse(Data(repeating: 0x20, count: ClaudeSessionRegistry.maximumFileSize + 1)) == nil, "registry accepted an oversized file")
+
+    for name in ["line 1\nline 2", "  ", String(repeating: "长", count: 161)] {
+        let record = ClaudeSessionRegistry.parse(registration(["name": name]))
+        try expect(record != nil && record?.title == nil, "unsafe registry title was kept")
+    }
+    try expect(ClaudeSessionRegistry.parse(registration(["status": "idle"]))?.phase == nil, "idle session was shown as active")
+
+    let link = ClaudeSessionRegistry.deepLink(forDesktopSession: hostID)?.absoluteString
+    try expect(link == "claude://code/continue?session=\(hostID)", "Claude Desktop session link is wrong: \(link ?? "nil")")
+    try expect(ClaudeSessionRegistry.deepLink(forDesktopSession: "local_x?session=last") == nil, "malformed session link was built")
+}
+
 do {
     try checkHookAllowlist()
     try checkRateLimits()
@@ -158,6 +224,7 @@ do {
     try checkClaudeInvalidDataAndTimes()
     try checkRefreshPolicy()
     try checkClaudeTaskStatuses()
+    try checkClaudeSessionRegistry()
     print("CodexTouchBarCoreChecks passed")
 } catch {
     fputs("CodexTouchBarCoreChecks failed: \(error)\n", stderr)

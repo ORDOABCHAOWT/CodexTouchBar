@@ -225,6 +225,7 @@ final class DashboardStripView: NSView {
     private var tickTimer: Timer?
     private var statusLayoutKey: [String]?
     private var taskBlocks: [GlassBlockView] = []
+    var visibleTaskCount: Int { taskBlocks.count }
     private var quotaBlocks: [QuotaKind: GlassBlockView] = [:]
     private var playPauseButton: MediaButtonView?
     private var playbackStateKnown = false
@@ -357,7 +358,8 @@ final class DashboardStripView: NSView {
         }
 
         let visibleTasks = Array(snapshot.tasks.prefix(6))
-        let layoutKey = [snapshot.provider.rawValue] + (visibleTasks.isEmpty ? ["__waiting__"] : visibleTasks.map { "\($0.route.provider.rawValue)|\($0.route.identifier)|\($0.route.category.rawValue)|\($0.route.requiresAccessibility)|\($0.route.supported)" })
+        let needsClaudeAccess = snapshot.provider == .claude && snapshot.taskError?.contains("辅助功能") == true
+        let layoutKey = [snapshot.provider.rawValue] + (visibleTasks.isEmpty ? [needsClaudeAccess ? "__access_required__" : "__waiting__"] : visibleTasks.map { "\($0.route.provider.rawValue)|\($0.route.identifier)|\($0.route.category.rawValue)|\($0.route.requiresAccessibility)|\($0.route.supported)" })
         if statusLayoutKey != layoutKey {
             [taskStack, quotaStack].forEach { stack in
                 stack.arrangedSubviews.forEach { view in
@@ -370,8 +372,8 @@ final class DashboardStripView: NSView {
 
             if visibleTasks.isEmpty {
                 let block = GlassBlockView()
-                let label = "等待任务"
-                block.set(text: label, accent: snapshot.refreshError == nil ? .gray : .orange)
+                let label = needsClaudeAccess ? "需要辅助功能权限" : "等待任务"
+                block.set(text: label, accent: needsClaudeAccess ? .orange : .gray)
                 taskStack.addArrangedSubview(block)
             } else {
                 for task in visibleTasks {
@@ -395,9 +397,11 @@ final class DashboardStripView: NSView {
         for (task, block) in zip(visibleTasks, taskBlocks) {
             let elapsed = Self.elapsedString(since: task.startedAt)
             let compactTitle = String(task.title.prefix(80))
-            let text = task.provider == .claude ? compactTitle : "\(compactTitle) · \(Self.phaseGlyph(task.phase)) \(elapsed)"
+            // Sidebar rows have no reliable start time, so they show the title
+            // only. Registry-backed Claude Code tasks time like Codex tasks.
+            let text = task.route.requiresAccessibility ? compactTitle : "\(compactTitle) · \(Self.phaseGlyph(task.phase)) \(elapsed)"
             block.set(text: text, accent: .forPhase(task.phase))
-            block.toolTip = "\(task.title)\n\(task.workspaceName) · 点按切换"
+            block.toolTip = "\(task.title)\n\(task.workspaceName) · \(task.phase.shortLabel) · 点按切换"
             block.setAccessibilityLabel(block.toolTip)
         }
 

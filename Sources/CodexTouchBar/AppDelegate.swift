@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let touchBarController = TouchBarController()
     private var previewController: PreviewWindowController?
     private var statusItem: NSStatusItem?
+    private var diagnosticObserver: NSObjectProtocol?
     private var connectionMenuItem: NSMenuItem?
     private var codexSnapshot = DashboardSnapshot(provider: .codex)
     private var claudeSnapshot = DashboardSnapshot(provider: .claude)
@@ -29,6 +30,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         previewOnly = CommandLine.arguments.contains("--preview-only")
         pinnedProvider = argumentValue(after: "--provider").flatMap { TaskProvider(rawValue: $0) }
+        if !previewOnly {
+            diagnosticObserver = DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.whitney.CodexTouchBar.state-request"), object: nil, queue: .main) { [weak self] note in
+                guard let requestID = note.object as? String, UUID(uuidString: requestID) != nil else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let state: [String: Any] = [
+                        "pid": ProcessInfo.processInfo.processIdentifier,
+                        "foreground": self.currentProvider?.rawValue ?? "other",
+                        "lastProvider": self.lastSupportedProvider.rawValue,
+                        "claudeActive": self.claudeStore.isActive,
+                        "claudeTasks": self.claudeSnapshot.tasks.count,
+                        "visibleButtons": self.touchBarController.visibleTaskCount,
+                        "accessibility": self.claudeSidebarMonitor.isTrusted,
+                        "sidebarNodes": self.claudeSidebarMonitor.diagnosticCounts.sidebarNodes,
+                        "titledRows": self.claudeSidebarMonitor.diagnosticCounts.titledRows
+                    ]
+                    DistributedNotificationCenter.default().postNotificationName(Notification.Name("com.whitney.CodexTouchBar.state-response"), object: requestID, userInfo: state, deliverImmediately: true)
+                }
+            }
+        }
 
         if !previewOnly {
             socketServer = HookSocketServer()
@@ -71,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let diagnosticObserver { DistributedNotificationCenter.default().removeObserver(diagnosticObserver) }
         codexClient?.stop(); activityMonitor?.stop()
         claudeStore.stop()
         socketServer?.stop()
@@ -93,9 +115,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The status menu and preview can temporarily make our own app
             // frontmost while the last selected provider is still Claude.
             if self.currentProvider == .claude || self.lastSupportedProvider == .claude || self.pinnedProvider == .claude {
-                let sidebar = self.claudeSidebarMonitor.scan()
-                var seen = Set<String>()
-                self.claudeSnapshot.tasks = Array((sidebar + snapshot.tasks).filter { seen.insert($0.route.identifier).inserted }.prefix(12))
+                // Code sessions come from Claude Code's session registry with
+                // an exact session link. A sidebar row with the same title is
+                // the same task, so the sidebar only adds chats and Cowork.
+                let registryTitles = Set(snapshot.tasks.map(\.title))
+                let sidebar = self.claudeSidebarMonitor.scan().filter { !registryTitles.contains($0.title) }
+                self.claudeSnapshot.tasks = Array((snapshot.tasks + sidebar).prefix(12))
                 self.claudeSnapshot.taskError = self.claudeSidebarMonitor.permissionMessage
             }
             self.updateVisibleSnapshot()

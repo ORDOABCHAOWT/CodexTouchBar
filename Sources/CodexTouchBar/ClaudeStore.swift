@@ -1,29 +1,21 @@
 import CodexTouchBarCore
 import Foundation
-import Darwin
 
 /// Claude Desktop's local plan history is a usage history fallback. It is
 /// intentionally separate from Codex's store and never reads credentials,
 /// prompts, transcripts, or cookies.
 @MainActor
 final class ClaudeStore {
-    private struct SessionMetadata: Decodable {
-        let hostSessionId: String?
-        let name: String?
-        let startedAt: Double?
-        let updatedAt: Double?
-        let pid: Int64?
-        let entrypoint: String?
-        let status: String?
-    }
     var onChange: ((DashboardSnapshot) -> Void)?
     private(set) var snapshot = DashboardSnapshot(provider: .claude)
     private var timer: Timer?
     private var taskTimer: Timer?
     private var policy = ClaudeRefreshPolicy()
     private var refreshTask: Task<Void, Never>?
-    private var isActive = false
+    private(set) var isActive = false
     private let oauthClient = ClaudeOAuthUsageClient()
+    private let sessionMonitor = ClaudeSessionMonitor()
+    private var sessionTasks: [TaskSnapshot] = []
     private let historyURL: URL
 
     init(fileManager: FileManager = .default) {
@@ -32,6 +24,13 @@ final class ClaudeStore {
     }
 
     func start() {
+        sessionMonitor.onTasks = { [weak self] tasks in
+            Task { @MainActor [weak self] in
+                self?.sessionTasks = tasks
+                self?.publishTasks()
+            }
+        }
+        sessionMonitor.start()
         loadHistoryOnly()
     }
 
@@ -50,6 +49,7 @@ final class ClaudeStore {
     }
 
     func stop() {
+        sessionMonitor.stop()
         timer?.invalidate()
         timer = nil
         taskTimer?.invalidate(); taskTimer = nil
@@ -114,35 +114,8 @@ final class ClaudeStore {
 
     func publishTasks() { snapshot.tasks = allTasks(); onChange?(snapshot) }
 
-
-    private func scanSessions() -> [TaskSnapshot] {
-        let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions", isDirectory: true)
-        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return [] }
-        let now = Date()
-        return files.compactMap { url -> TaskSnapshot? in
-            guard url.lastPathComponent.range(of: #"^[0-9]+\.json$"#, options: .regularExpression) != nil,
-                  let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-                  let size = attributes[.size] as? NSNumber, size.intValue <= 64 * 1024,
-                  let data = try? Data(contentsOf: url), let metadata = try? JSONDecoder().decode(SessionMetadata.self, from: data), metadata.entrypoint == "claude-desktop",
-                  let pidValue = metadata.pid, pidValue > 0, pidValue <= Int64(Int32.max), kill(Int32(pidValue), 0) == 0,
-                  let sessionID = metadata.hostSessionId, sessionID.hasPrefix("local_"), UUID(uuidString: String(sessionID.dropFirst(6))) != nil else { return nil }
-            let title = metadata.name.flatMap { safeTitle($0) } ?? "Claude Code"
-            let timestamp = metadata.startedAt ?? now.timeIntervalSince1970 * 1000
-            let date = Date(timeIntervalSince1970: timestamp > 2_000_000_000 ? timestamp / 1000 : timestamp)
-            guard let phase = ClaudeTaskStatus.phase(for: metadata.status) else { return nil }
-            let updated = metadata.updatedAt.flatMap { Date(timeIntervalSince1970: $0 > 2_000_000_000 ? $0 / 1000 : $0) } ?? date
-            return TaskSnapshot(provider: .claude, sessionID: sessionID, title: title, workspaceName: "Claude Code", category: .code, route: TaskRoute(provider: .claude, identifier: sessionID), phase: phase, toolName: nil, startedAt: date, updatedAt: updated)
-        }.sorted { $0.updatedAt > $1.updatedAt }.prefix(12).map { $0 }
-    }
-
     private func allTasks() -> [TaskSnapshot] {
-        Array(scanSessions().sorted { $0.updatedAt > $1.updatedAt }.prefix(12))
-    }
-
-    private func safeTitle(_ title: String) -> String? {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.count <= 80, !trimmed.contains("\n") else { return nil }
-        return trimmed
+        Array(sessionTasks.prefix(12))
     }
 
     private func failureMessage(_ error: Error) -> String {
