@@ -1,6 +1,6 @@
 # CodexTouchBar
 
-A lightweight native macOS companion that shows Codex or Claude Desktop tasks and remaining quota as colored glass blocks on MacBook Pro Touch Bar models. Version 0.2.3 adds Claude support alongside the existing Codex integration.
+A lightweight native macOS companion that shows Codex or Claude Desktop tasks and remaining quota as colored glass blocks on MacBook Pro Touch Bar models. Version 0.2.4 adds Claude support alongside the existing Codex integration.
 
 ## Features
 
@@ -32,6 +32,8 @@ While Claude is foreground, tasks refresh every 5 seconds. Usage refreshes every
 Quota blocks show **remaining** percentages (`余`), not the used percentages shown in Claude's settings. The network source is Claude Code's signed-in account, which the companion cannot independently prove matches the Desktop account. Its scoped OAuth token is read from the existing Keychain item only into memory and sent only to Anthropic's usage endpoint; redirects, cookie storage and disk caching are disabled. This endpoint and Claude's local metadata formats are internal interfaces observed in the installed Desktop app, so future Claude updates may require compatibility fixes.
 
 If network usage is unavailable, the app can show Claude Desktop's local plan history. That history is sampled by Claude itself (observed roughly every 15 minutes), so polling it faster does not make it real time. Such values always carry **旧**; the preview and tooltips retain the actual sample timestamp, source and refresh error. Old successful network values are also marked stale after 2 minutes or a refresh error. Missing data displays `…`, never zero; history does not supply reset times.
+
+Claude task snapshots continue to read the last selected Claude provider while the status menu or preview temporarily holds focus.
 
 The bar displays up to six tasks. Sidebar rows take priority and use their live Accessibility elements, including rows with duplicate titles. Only the currently exposed sidebar list is available; it is not an inventory of every historical chat. Without Accessibility, live desktop Code session registrations provide a fallback. Only explicit running, tool-use, waiting-for-input, or approval states are included. Idle, completed, unknown, and historical Cowork records are excluded. When no active task exists, the task area displays **等待任务**. The app reads titles, IDs and status metadata, not message bodies or transcript files, and never writes task data or credentials to disk.
 

@@ -90,7 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         claudeStore.onChange = { [weak self] snapshot in
             guard let self else { return }
             self.claudeSnapshot = snapshot
-            if self.currentProvider == .claude {
+            // The status menu and preview can temporarily make our own app
+            // frontmost while the last selected provider is still Claude.
+            if self.currentProvider == .claude || self.lastSupportedProvider == .claude || self.pinnedProvider == .claude {
                 let sidebar = self.claudeSidebarMonitor.scan()
                 var seen = Set<String>()
                 self.claudeSnapshot.tasks = Array((sidebar + snapshot.tasks).filter { seen.insert($0.route.identifier).inserted }.prefix(12))
